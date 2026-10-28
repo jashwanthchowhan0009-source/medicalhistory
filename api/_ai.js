@@ -1,40 +1,38 @@
-// Shared helper for calling the Claude API (Anthropic Messages API).
+// Shared helpers for the AI endpoints — Google Gemini API.
 // Files starting with "_" inside /api are not exposed as routes on Vercel.
 
-const API_URL = 'https://api.anthropic.com/v1/messages';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
-export async function askClaude({ system, content, maxTokens = 4096 }) {
-  const key = process.env.ANTHROPIC_API_KEY;
+// content: [{ type:'text', text } | { type:'image'|'document', source:{ media_type, data(base64) } }]
+export async function askAI({ system, content, maxTokens = 8192 }) {
+  const key = process.env.API_KEYS_FOR_MEDH || process.env.GEMINI_API_KEY;
   if (!key) {
-    const err = new Error('Server is missing ANTHROPIC_API_KEY. Add it in Vercel → Project → Settings → Environment Variables.');
-    err.status = 500;
-    throw err;
+    throw Object.assign(new Error('Server is missing API_KEYS_FOR_MEDH. Add it in Vercel → Settings → Environment Variables, then redeploy.'), { status: 500 });
   }
-  const res = await fetch(API_URL, {
+  const parts = content.map((c) =>
+    c.type === 'text'
+      ? { text: c.text }
+      : { inline_data: { mime_type: c.source.media_type, data: c.source.data } });
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content }],
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' },
     }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data?.error?.message || `Claude API error (${res.status})`);
-    err.status = 502;
-    throw err;
+    const msg = data?.error?.message || `AI error (${res.status})`;
+    throw Object.assign(new Error(res.status === 429 ? 'AI is busy (rate limit). Try again in a minute.' : msg), { status: 502 });
   }
-  const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+  if (!text) throw Object.assign(new Error('AI returned an empty answer — the file may be unreadable.'), { status: 502 });
   return parseJSON(text);
 }
 
-// Pull the first JSON object out of the model's reply.
 export function parseJSON(text) {
   const cleaned = String(text).replace(/```(?:json)?/gi, '').trim();
   const start = cleaned.indexOf('{');
@@ -52,15 +50,10 @@ export function send(res, status, obj) {
   res.status(status).setHeader('content-type', 'application/json').send(JSON.stringify(obj));
 }
 
-// Only signed-in users may call the AI endpoints (protects API credits).
-// Verifies the Supabase access token sent as "Authorization: Bearer <token>".
+// Only signed-in users may call the AI endpoints (protects the API quota).
 export async function requireUser(req) {
-  // Public values (same as config.js); env vars override them.
   const url = process.env.SUPABASE_URL || 'https://bbybbeqcbdzixobpqyif.supabase.co';
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_dfqskl_zehIpYPekrRtunw_neVpeAYv';
-  if (!url || !key) {
-    throw Object.assign(new Error('Server is missing SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.'), { status: 500 });
-  }
   const auth = req.headers.authorization || '';
   const tokenValue = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!tokenValue) throw Object.assign(new Error('Please log in again.'), { status: 401 });

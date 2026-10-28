@@ -2,7 +2,7 @@
 // Body: { profile: {...}, records: [ ...scanned records without files ] }
 // Returns the patient's complete health report built from all records.
 
-import { askClaude, readBody, send, requireUser } from './_claude.js';
+import { askAI, readBody, send, requireUser } from './_ai.js';
 
 export const config = { maxDuration: 60 };
 
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     const { profile = {}, records } = readBody(req);
     if (!Array.isArray(records) || !records.length) return send(res, 400, { error: 'No records to summarise' });
     const payload = JSON.stringify({ profile, records }).slice(0, 180000);
-    const out = await askClaude({
+    const out = await askAI({
       system: SYSTEM,
       content: [{ type: 'text', text: `Here is the person's data as JSON:\n${payload}` }],
       maxTokens: 4000,

@@ -2,7 +2,7 @@
 // Body: { files: [{ name, mediaType: "image/jpeg" | "application/pdf", data: <base64> }] }
 // Returns: { entries: [ ...structured health records ] }
 
-import { askClaude, readBody, send, requireUser } from './_claude.js';
+import { askAI, readBody, send, requireUser } from './_ai.js';
 
 export const config = { maxDuration: 60 };
 
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     });
     content.push({ type: 'text', text: 'Read all files above and return the JSON.' });
 
-    const out = await askClaude({ system: SYSTEM, content, maxTokens: 8000 });
+    const out = await askAI({ system: SYSTEM, content, maxTokens: 8000 });
     const entries = Array.isArray(out.entries) ? out.entries : [];
     return send(res, 200, { entries });
   } catch (err) {

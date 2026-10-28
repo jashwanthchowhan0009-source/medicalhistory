@@ -21,8 +21,8 @@ Patient switcher in the top bar changes whose records you’re viewing.
 
 ```
 Browser (index.html + app.js + config.js)         Vercel serverless (api/)
-  ├─ Supabase Auth (email + password)              /api/scan    → Claude reads images/PDFs → structured records
-  ├─ Postgres: hh_patients, hh_records (RLS)       /api/summary → Claude → complete health report
+  ├─ Supabase Auth (email + password)              /api/scan    → Gemini reads images/PDFs → structured records
+  ├─ Postgres: hh_patients, hh_records (RLS)       /api/summary → Gemini → complete health report
   └─ Storage: hh-reports (private, per-user)       both require a logged-in user
 ```
 
@@ -31,7 +31,7 @@ Schema: `supabase/schema.sql`. Each user can only read/write their own patients,
 ## Deploy
 
 1. Vercel → import this repo (preset **Other**, no build command).
-2. Vercel → Settings → Environment Variables → `ANTHROPIC_API_KEY` → redeploy.
+2. Vercel → Settings → Environment Variables → `API_KEYS_FOR_MEDH` (Gemini API key) → redeploy.
 3. Supabase → Authentication → URL Configuration → **Site URL** = your Vercel URL (and add it under Redirect URLs) so confirmation / reset emails open the app.
 
 ## Brand
