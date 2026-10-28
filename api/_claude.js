@@ -51,3 +51,19 @@ export function readBody(req) {
 export function send(res, status, obj) {
   res.status(status).setHeader('content-type', 'application/json').send(JSON.stringify(obj));
 }
+
+// Only signed-in users may call the AI endpoints (protects API credits).
+// Verifies the Supabase access token sent as "Authorization: Bearer <token>".
+export async function requireUser(req) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw Object.assign(new Error('Server is missing SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.'), { status: 500 });
+  }
+  const auth = req.headers.authorization || '';
+  const tokenValue = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!tokenValue) throw Object.assign(new Error('Please log in again.'), { status: 401 });
+  const res = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${tokenValue}` } });
+  if (!res.ok) throw Object.assign(new Error('Session expired — please log in again.'), { status: 401 });
+  return res.json();
+}

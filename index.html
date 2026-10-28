@@ -32,6 +32,41 @@
 
   <main id="main" tabindex="-1">
 
+    <!-- ============ AUTH ============ -->
+    <section class="view" id="view-auth" data-view="auth" aria-labelledby="authTitle" hidden>
+      <div class="container auth-wrap">
+        <div class="auth-card">
+          <p class="eyebrow" id="authEyebrow">Welcome</p>
+          <h1 id="authTitle">Log in to Health History</h1>
+          <p class="muted" id="authSub">Your reports are saved to your account and available on any device.</p>
+
+          <div class="tabs" role="tablist" aria-label="Account">
+            <button type="button" role="tab" id="tabLogin" aria-selected="true" data-mode="login">Log in</button>
+            <button type="button" role="tab" id="tabSignup" aria-selected="false" data-mode="signup">Create account</button>
+          </div>
+
+          <form id="authForm" class="auth-form" novalidate>
+            <div class="field" id="nameField" hidden>
+              <label for="au-name">Full name</label>
+              <input id="au-name" name="name" type="text" autocomplete="name">
+            </div>
+            <div class="field">
+              <label for="au-email">Email</label>
+              <input id="au-email" name="email" type="email" autocomplete="email" required>
+            </div>
+            <div class="field" id="passwordField">
+              <label for="au-password">Password</label>
+              <input id="au-password" name="password" type="password" autocomplete="current-password" minlength="8" required>
+              <p class="hint" id="pwHint" hidden>At least 8 characters.</p>
+            </div>
+            <button class="btn btn-primary btn-block" type="submit" id="authSubmit">Log in</button>
+            <button class="link-btn" type="button" id="forgotBtn">Forgot password?</button>
+            <p class="status" id="authStatus" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ HOME ============ -->
     <section class="view" id="view-home" data-view="home" aria-labelledby="homeTitle">
       <div class="container narrow">
@@ -120,6 +155,7 @@
           <div>
             <p class="eyebrow">Profile</p>
             <h1 id="profileTitle"><span id="profileName">Your profile</span></h1>
+            <p class="muted" id="profileEmail"></p>
           </div>
         </div>
 
@@ -160,12 +196,11 @@
 
         <section class="panel" aria-labelledby="dataTitle">
           <h2 class="h3" id="dataTitle">Your data</h2>
-          <p class="muted">Records are stored privately on this device. Files are sent to the AI only while scanning.</p>
+          <p class="muted">Records are saved privately to your account — only you can see them. Files are sent to the AI only while scanning.</p>
           <div class="row-actions">
             <button class="btn btn-outline" type="button" id="exportBtn">Export backup</button>
-            <label class="btn btn-outline" for="importInput">Import backup</label>
-            <input class="sr-only" type="file" id="importInput" accept="application/json">
-            <button class="btn btn-danger" type="button" id="wipeBtn">Delete all</button>
+            <button class="btn btn-outline" type="button" id="logoutBtn">Log out</button>
+            <button class="btn btn-danger" type="button" id="wipeBtn">Delete all records</button>
           </div>
         </section>
       </div>
@@ -199,6 +234,8 @@
     <div class="dialog-body" id="sourcesBody"></div>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

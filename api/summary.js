@@ -2,7 +2,7 @@
 // Body: { profile: {...}, records: [ ...scanned records without files ] }
 // Returns the patient's complete health report built from all records.
 
-import { askClaude, readBody, send } from './_claude.js';
+import { askClaude, readBody, send, requireUser } from './_claude.js';
 
 export const config = { maxDuration: 60 };
 
@@ -24,6 +24,7 @@ Reply with ONLY a JSON object, no prose, no comments:
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
   try {
+    await requireUser(req);
     const { profile = {}, records } = readBody(req);
     if (!Array.isArray(records) || !records.length) return send(res, 400, { error: 'No records to summarise' });
     const payload = JSON.stringify({ profile, records }).slice(0, 180000);

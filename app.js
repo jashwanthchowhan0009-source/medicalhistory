@@ -1,5 +1,6 @@
 /* Health History — front-end app.
- * Records live on the user's device (IndexedDB). Files are sent to /api/scan only while scanning.
+ * Login with email + password (Supabase Auth). Records are saved to the user's account
+ * (Postgres, row-level security) and report files to private storage. Files go to /api/scan only while scanning.
  */
 (() => {
   'use strict';
@@ -8,7 +9,9 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  }));
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const fmtDate = (iso) => {
     if (!iso) return 'Date unknown';
@@ -16,64 +19,124 @@
     if (isNaN(d)) return iso;
     return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   };
+  const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
   const setStatus = (el, msg, kind = '') => {
     el.className = 'status' + (kind ? ' ' + kind : '');
     el.innerHTML = msg;
   };
   const spin = (t) => `<span class="spinner" aria-hidden="true"></span>${esc(t)}`;
 
-  // ---------- Storage (IndexedDB) ----------
-  const DB_NAME = 'health-history';
-  const STORE = 'entries';
-  let dbPromise;
-  function db() {
-    if (!dbPromise) {
-      dbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' });
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-    return dbPromise;
+  // ---------- Supabase ----------
+  const CFG = window.HH_CONFIG || {};
+  const configured = CFG.supabaseUrl && !CFG.supabaseUrl.startsWith('__') && window.supabase;
+  const sb = configured ? window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey) : null;
+  const BUCKET = 'hh-reports';
+  let user = null;
+  let session = null;
+
+  async function token() {
+    const { data } = await sb.auth.getSession();
+    return data.session?.access_token || '';
   }
-  async function tx(mode, fn) {
-    const d = await db();
+
+  // ---------- Data layer ----------
+  let entries = [];
+  let profileData = {};
+  let fullReport = null;
+
+  function byDateDesc(a, b) {
+    return (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || '');
+  }
+
+  async function loadEntries() {
+    const { data, error } = await sb.from('hh_records').select('id, data, created_at').order('created_at', { ascending: false });
+    if (error) throw error;
+    entries = (data || []).map((r) => ({ ...r.data, id: r.id, createdAt: r.data.createdAt || r.created_at })).sort(byDateDesc);
+  }
+
+  function dataUrlToBlob(dataUrl) {
+    const [head, b64] = dataUrl.split(',');
+    const mime = head.match(/data:(.*?);/)[1];
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function blobToDataURL(blob) {
     return new Promise((resolve, reject) => {
-      const t = d.transaction(STORE, mode);
-      const s = t.objectStore(STORE);
-      const r = fn(s);
-      t.oncomplete = () => resolve(r && 'result' in r ? r.result : undefined);
-      t.onerror = () => reject(t.error);
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(blob);
     });
   }
-  const getAll = () => tx('readonly', (s) => s.getAll());
-  const putEntry = (e) => tx('readwrite', (s) => s.put(e));
-  const delEntry = (id) => tx('readwrite', (s) => s.delete(id));
-  const clearAll = () => tx('readwrite', (s) => s.clear());
 
-  const store = {
-    get(k, fallback) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
-    del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
-  };
-
-  let entries = [];
-  async function loadEntries() {
-    entries = (await getAll()).sort(byDateDesc);
+  // Upload any not-yet-stored files, then save the record row.
+  async function putEntry(e) {
+    const files = [];
+    for (const f of e.files || []) {
+      if (!f.path && f.dataUrl) {
+        const ext = f.mediaType === 'application/pdf' ? 'pdf' : 'jpg';
+        const path = `${user.id}/${e.id}/${f.id}.${ext}`;
+        const { error } = await sb.storage.from(BUCKET).upload(path, dataUrlToBlob(f.dataUrl), { contentType: f.mediaType, upsert: true });
+        if (error) throw new Error('File upload failed: ' + error.message);
+        files.push({ id: f.id, name: f.name, mediaType: f.mediaType, path });
+      } else {
+        files.push({ id: f.id, name: f.name, mediaType: f.mediaType, path: f.path });
+      }
+    }
+    const { id, ...rest } = e;
+    const data = { ...rest, files };
+    const { error } = await sb.from('hh_records').upsert({ id, user_id: user.id, record_date: isoDate(e.date), data });
+    if (error) throw new Error('Save failed: ' + error.message);
   }
-  function byDateDesc(a, b) {
-    const da = a.date || a.createdAt || '';
-    const dbb = b.date || b.createdAt || '';
-    return dbb.localeCompare(da);
+
+  async function delEntry(id, { keepFiles = false } = {}) {
+    const e = entries.find((x) => x.id === id);
+    if (!keepFiles) {
+      const paths = (e?.files || []).map((f) => f.path).filter(Boolean);
+      if (paths.length) await sb.storage.from(BUCKET).remove(paths);
+    }
+    const { error } = await sb.from('hh_records').delete().eq('id', id);
+    if (error) throw error;
+  }
+
+  async function clearAll() {
+    for (const e of entries) await delEntry(e.id);
+  }
+
+  async function fileAsDataURL(f) {
+    if (f.dataUrl) return f.dataUrl;
+    const { data, error } = await sb.storage.from(BUCKET).download(f.path);
+    if (error) throw error;
+    return blobToDataURL(data);
+  }
+
+  async function loadProfile() {
+    const { data, error } = await sb.from('hh_profiles').select('data, full_report').eq('user_id', user.id).maybeSingle();
+    if (error) throw error;
+    profileData = data?.data || {};
+    if (!profileData.name && user.user_metadata?.full_name) profileData.name = user.user_metadata.full_name;
+    fullReport = data?.full_report || null;
+  }
+  async function saveProfile(patch) {
+    const row = { user_id: user.id };
+    if ('data' in patch) { profileData = patch.data; row.data = patch.data; }
+    if ('full_report' in patch) { fullReport = patch.full_report; row.full_report = patch.full_report; }
+    const { error } = await sb.from('hh_profiles').upsert(row);
+    if (error) throw new Error('Save failed: ' + error.message);
   }
 
   // ---------- Routing ----------
   const VIEWS = ['home', 'history', 'profile'];
+  function showView(view) {
+    $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
+  }
   function route() {
+    if (!user) { showView('auth'); return; }
     const name = (location.hash || '#home').slice(1).split('/')[0];
     const view = VIEWS.includes(name) ? name : 'home';
-    $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view));
+    showView(view);
     $$('[data-nav]').forEach((a) => {
       const on = a.dataset.nav === view;
       a.classList.toggle('active', on);
@@ -83,7 +146,6 @@
     if (view === 'profile') renderProfile();
     if (view === 'home') renderRecent();
     window.scrollTo(0, 0);
-    // scroll to a specific record: #history/<id>
     const target = location.hash.split('/')[1];
     if (view === 'history' && target) {
       requestAnimationFrame(() => document.getElementById('rec-' + target)?.scrollIntoView({ block: 'start' }));
@@ -91,20 +153,116 @@
   }
   window.addEventListener('hashchange', route);
 
+  // ---------- Auth ----------
+  let authMode = 'login'; // login | signup | reset | newpass
+  let recoveryMode = location.hash.includes('type=recovery');
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    const signup = mode === 'signup';
+    $('#tabLogin').setAttribute('aria-selected', String(mode === 'login'));
+    $('#tabSignup').setAttribute('aria-selected', String(signup));
+    $('.tabs').hidden = mode === 'reset' || mode === 'newpass';
+    $('#nameField').hidden = !signup;
+    $('#pwHint').hidden = !(signup || mode === 'newpass');
+    $('#passwordField').hidden = mode === 'reset';
+    $('#au-email').closest('.field').hidden = mode === 'newpass';
+    $('#forgotBtn').hidden = mode !== 'login';
+    $('#au-password').setAttribute('autocomplete', signup || mode === 'newpass' ? 'new-password' : 'current-password');
+    const t = {
+      login: ['Welcome', 'Log in to Health History', 'Log in'],
+      signup: ['New here', 'Create your account', 'Create account'],
+      reset: ['Reset', 'Reset your password', 'Send reset link'],
+      newpass: ['Reset', 'Choose a new password', 'Save new password'],
+    }[mode];
+    $('#authEyebrow').textContent = t[0];
+    $('#authTitle').textContent = t[1];
+    $('#authSubmit').textContent = t[2];
+    setStatus($('#authStatus'), mode === 'reset' ? 'We’ll email you a link to set a new password. <button type="button" class="link-btn" id="backToLogin">Back to log in</button>' : '');
+  }
+
+  async function onAuthSubmit(ev) {
+    ev.preventDefault();
+    const status = $('#authStatus');
+    const email = $('#au-email').value.trim();
+    const password = $('#au-password').value;
+    const name = $('#au-name').value.trim();
+    const btn = $('#authSubmit');
+    if (authMode !== 'newpass' && !/^\S+@\S+\.\S+$/.test(email)) return setStatus(status, 'Enter a valid email.', 'error');
+    if ((authMode === 'signup' || authMode === 'newpass') && password.length < 8) return setStatus(status, 'Password must be at least 8 characters.', 'error');
+    if (authMode === 'login' && !password) return setStatus(status, 'Enter your password.', 'error');
+    btn.disabled = true;
+    try {
+      if (authMode === 'login') {
+        setStatus(status, spin('Logging in…'));
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else if (authMode === 'signup') {
+        setStatus(status, spin('Creating account…'));
+        const { data, error } = await sb.auth.signUp({
+          email, password,
+          options: { data: { full_name: name }, emailRedirectTo: location.origin },
+        });
+        if (error) throw error;
+        if (!data.session) {
+          setAuthMode('login');
+          $('#au-email').value = email;
+          setStatus(status, `Check <strong>${esc(email)}</strong> for a confirmation link, then log in here.`, 'ok');
+        }
+      } else if (authMode === 'reset') {
+        setStatus(status, spin('Sending…'));
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
+        if (error) throw error;
+        setStatus(status, `If an account exists for <strong>${esc(email)}</strong>, a reset link is on its way.`, 'ok');
+      } else if (authMode === 'newpass') {
+        setStatus(status, spin('Saving…'));
+        const { error } = await sb.auth.updateUser({ password });
+        if (error) throw error;
+        recoveryMode = false;
+        history.replaceState(null, '', location.pathname + '#home');
+        setStatus(status, 'Password updated.', 'ok');
+        await onSignedIn((await sb.auth.getSession()).data.session);
+      }
+    } catch (err) {
+      const msg = /invalid login/i.test(err.message) ? 'Wrong email or password.' : err.message;
+      setStatus(status, esc(msg), 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function onSignedIn(s) {
+    session = s;
+    user = s?.user || null;
+    if (!user) return;
+    document.body.classList.remove('signed-out');
+    try {
+      await Promise.all([loadEntries(), loadProfile()]);
+    } catch (err) {
+      entries = [];
+      console.error(err);
+    }
+    paintAvatar();
+    if (!location.hash || location.hash.includes('access_token') || location.hash.includes('type=')) {
+      history.replaceState(null, '', location.pathname + '#home');
+    }
+    route();
+  }
+
+  function onSignedOut() {
+    user = null; session = null; entries = []; profileData = {}; fullReport = null;
+    document.body.classList.add('signed-out');
+    setAuthMode('login');
+    showView('auth');
+  }
+
   // ---------- Upload / pending ----------
   const MAX_FILES = 10;
-  const MAX_SIDE = 1800;          // px, longest edge after compression
-  const MAX_PDF_BYTES = 3.5e6;    // keep request under serverless body limits
-  let pending = [];               // { id, name, mediaType, dataUrl }
+  const MAX_SIDE = 1800;
+  const MAX_PDF_BYTES = 3.5e6;
+  let pending = [];
 
-  function readAsDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(file);
-    });
-  }
+  function readAsDataURL(file) { return blobToDataURL(file); }
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -134,16 +292,14 @@
 
   async function addFiles(fileList) {
     const scanStatus = $('#scanStatus');
-    const files = [...fileList];
-    for (const f of files) {
+    for (const f of [...fileList]) {
       if (pending.length >= MAX_FILES) { setStatus(scanStatus, `Up to ${MAX_FILES} files per scan.`, 'error'); break; }
       try {
         if (f.type === 'application/pdf') {
           if (f.size > MAX_PDF_BYTES) { setStatus(scanStatus, `${esc(f.name)} is too large (max 3.5 MB PDF). Try photos of the pages instead.`, 'error'); continue; }
           pending.push({ id: uid(), name: f.name, mediaType: 'application/pdf', dataUrl: await readAsDataURL(f) });
         } else if (f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)) {
-          const dataUrl = await compressImage(f);
-          pending.push({ id: uid(), name: f.name, mediaType: 'image/jpeg', dataUrl });
+          pending.push({ id: uid(), name: f.name, mediaType: 'image/jpeg', dataUrl: await compressImage(f) });
         } else {
           setStatus(scanStatus, `${esc(f.name)}: only images and PDFs are supported.`, 'error');
         }
@@ -155,8 +311,7 @@
   }
 
   function renderPending() {
-    const wrap = $('#pending');
-    wrap.hidden = pending.length === 0;
+    $('#pending').hidden = pending.length === 0;
     $('#pendingCount').textContent = pending.length;
     $('#pendingList').innerHTML = pending.map((p) => `
       <li class="thumb">
@@ -173,7 +328,7 @@
   async function api(path, body) {
     const res = await fetch(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await token()) },
       body: JSON.stringify(body),
     });
     let data = null;
@@ -181,7 +336,7 @@
     if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
     return data;
   }
-  const toApiFile = (f) => ({ name: f.name, mediaType: f.mediaType, data: f.dataUrl.split(',')[1] });
+  const toApiFile = async (f) => ({ name: f.name, mediaType: f.mediaType, data: (await fileAsDataURL(f)).split(',')[1] });
 
   function entryFromAI(ai, files) {
     const idx = Array.isArray(ai.sourceIndexes) && ai.sourceIndexes.length ? ai.sourceIndexes : files.map((_, i) => i);
@@ -202,8 +357,16 @@
       medicines: Array.isArray(ai.medicines) ? ai.medicines : [],
       billAmount: ai.billAmount || '',
       tldr: ai.tldr || '',
-      files: idx.map((i) => files[i]).filter(Boolean),
+      files: [...new Set(idx)].map((i) => files[i]).filter(Boolean),
     };
+  }
+
+  // Each file belongs to exactly one record; leftovers go to the first.
+  function assignFiles(list, files) {
+    const used = new Set();
+    for (const e of list) e.files = e.files.filter((f) => !used.has(f.id) && used.add(f.id));
+    const orphans = files.filter((f) => !used.has(f.id));
+    if (orphans.length) list[0].files.push(...orphans);
   }
 
   async function scanPending() {
@@ -214,31 +377,33 @@
     btn.disabled = true;
     setStatus(status, spin(`Reading ${files.length} file${files.length > 1 ? 's' : ''}… this takes ~20 seconds`));
     try {
-      const data = await api('/api/scan', { files: files.map(toApiFile) });
-      const list = (data.entries || []).map((e) => entryFromAI(e, files));
-      if (!list.length) throw new Error('The AI could not find a health record in these files.');
-      // make sure every file is kept somewhere
-      const used = new Set(list.flatMap((e) => e.files.map((f) => f.id)));
-      const orphans = files.filter((f) => !used.has(f.id));
-      if (orphans.length) list[0].files.push(...orphans);
+      let list;
+      try {
+        const data = await api('/api/scan', { files: await Promise.all(files.map(toApiFile)) });
+        list = (data.entries || []).map((e) => entryFromAI(e, files));
+        if (!list.length) throw new Error('The AI could not find a health record in these files.');
+        assignFiles(list, files);
+      } catch (err) {
+        // keep the files safe even if AI fails
+        list = [{
+          id: uid(), createdAt: new Date().toISOString(), scanned: false,
+          date: new Date().toISOString().slice(0, 10), title: 'Uploaded — not scanned yet',
+          files, error: err.message,
+        }];
+      }
+      setStatus(status, spin('Saving to your account…'));
       for (const e of list) await putEntry(e);
       pending = [];
       renderPending();
       await loadEntries();
-      setStatus(status, `Saved ${list.length} record${list.length > 1 ? 's' : ''} to your history.`, 'ok');
-      location.hash = '#history/' + list[0].id;
+      if (list[0].scanned) {
+        setStatus(status, `Saved ${list.length} record${list.length > 1 ? 's' : ''} to your history.`, 'ok');
+        location.hash = '#history/' + list[0].id;
+      } else {
+        setStatus(status, `AI scan failed: ${esc(list[0].error)}. Your files are saved — use “Retry scan” in History.`, 'error');
+      }
     } catch (err) {
-      // keep the files safe even if AI fails
-      const e = {
-        id: uid(), createdAt: new Date().toISOString(), scanned: false,
-        date: new Date().toISOString().slice(0, 10), title: 'Uploaded — not scanned yet',
-        files, error: err.message,
-      };
-      await putEntry(e);
-      pending = [];
-      renderPending();
-      await loadEntries();
-      setStatus(status, `AI scan failed: ${esc(err.message)}. Your files are saved — use “Retry scan” in History.`, 'error');
+      setStatus(status, esc(err.message), 'error');
     } finally {
       btn.disabled = false;
     }
@@ -250,11 +415,12 @@
     btn.disabled = true;
     btn.innerHTML = spin('Scanning…');
     try {
-      const data = await api('/api/scan', { files: old.files.map(toApiFile) });
+      const data = await api('/api/scan', { files: await Promise.all(old.files.map(toApiFile)) });
       const list = (data.entries || []).map((e) => entryFromAI(e, old.files));
       if (!list.length) throw new Error('No health record found');
-      for (const e of list) await putEntry(e);
-      await delEntry(id);
+      assignFiles(list, old.files);
+      for (const e of list) await putEntry(e); // files already have storage paths
+      await delEntry(id, { keepFiles: true });
       await loadEntries();
       renderHistory();
     } catch (err) {
@@ -266,9 +432,8 @@
 
   // ---------- Home: recent ----------
   function renderRecent() {
-    const wrap = $('#recentWrap');
     const recent = entries.slice(0, 3);
-    wrap.hidden = !recent.length;
+    $('#recentWrap').hidden = !recent.length;
     $('#recentList').innerHTML = recent.map((e) => `
       <li><a href="#history/${e.id}"><span>${esc(e.title)}${e.madeBy ? ` <span class="muted">· ${esc(e.madeBy)}</span>` : ''}</span><span class="r-date">${esc(fmtDate(e.date))}</span></a></li>`).join('');
   }
@@ -289,6 +454,7 @@
   }
 
   function cardHTML(e) {
+    const nFiles = (e.files || []).length;
     if (!e.scanned) {
       return `
       <article class="t-card unscanned">
@@ -296,7 +462,7 @@
         <p class="muted">${esc(e.error ? 'Last attempt: ' + e.error : 'These files are stored but haven’t been read by the AI.')}</p>
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" type="button" data-retry="${e.id}">Retry scan</button>
-          <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">Sources (${e.files.length})</button>
+          <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">Sources (${nFiles})</button>
           <span class="spacer"></span>
           <button class="link-btn" type="button" data-delete="${e.id}">Delete</button>
         </div>
@@ -308,7 +474,6 @@
     return `
       <article class="t-card">
         ${e.tldr ? `<div class="tldr"><span class="tldr-k">TL;DR</span><p>${esc(e.tldr)}</p></div>` : ''}
-
         <p class="label-row">
           <span class="k">${esc(e.title)}</span>
           ${e.madeBy ? `<span class="sep">|</span><span class="v">Made by ${esc(e.madeBy)}</span>` : ''}
@@ -327,7 +492,6 @@
               <td>${esc(f.range || '—')}</td></tr>`).join('')}
             </tbody></table></div>` : ''}
         </div>` : ''}
-
         ${hasDoctor ? `
         <p class="label-row">
           <span class="k">Consulted doctor</span>
@@ -345,13 +509,11 @@
             <div><strong>${esc(m.name)}</strong><span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span></div></li>`).join('')}
           </ul>` : ''}
         </div>` : ''}
-
         ${e.billAmount ? `<p class="muted">Bill amount: <strong style="color:var(--ink)">${esc(e.billAmount)}</strong></p>` : ''}
-
         <div class="card-actions">
           <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
-            Sources (${(e.files || []).length})
+            Sources (${nFiles})
           </button>
           <span class="spacer"></span>
           <button class="link-btn" type="button" data-delete="${e.id}">Delete</button>
@@ -376,44 +538,51 @@
   }
 
   // ---------- Sources dialog ----------
-  function openSources(id) {
+  async function openSources(id) {
     const e = entries.find((x) => x.id === id);
     if (!e) return;
     const dlg = $('#sourcesDialog');
     $('#sourcesTitle').textContent = `Sources · ${e.title}`;
-    $('#sourcesBody').innerHTML = (e.files || []).map((f, i) => {
-      if (f.mediaType === 'application/pdf') {
-        return `<figure class="source"><iframe src="${f.dataUrl}" title="${esc(f.name)}"></iframe><figcaption>${i + 1}. ${esc(f.name)}</figcaption></figure>`;
-      }
-      return `<figure class="source"><a href="${f.dataUrl}" target="_blank" rel="noopener"><img src="${f.dataUrl}" alt="Page ${i + 1}: ${esc(f.name)}"></a><figcaption>${i + 1}. ${esc(f.name)}</figcaption></figure>`;
-    }).join('') || '<p class="muted">No files attached.</p>';
+    $('#sourcesBody').innerHTML = `<p class="muted">${spin('Loading files…')}</p>`;
     if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    const files = e.files || [];
+    const paths = files.map((f) => f.path).filter(Boolean);
+    const urls = {};
+    if (paths.length) {
+      const { data } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
+      (data || []).forEach((d) => { if (d.signedUrl) urls[d.path] = d.signedUrl; });
+    }
+    $('#sourcesBody').innerHTML = files.map((f, i) => {
+      const src = urls[f.path] || f.dataUrl;
+      if (!src) return `<p class="muted">${i + 1}. ${esc(f.name)} — couldn’t load.</p>`;
+      if (f.mediaType === 'application/pdf') {
+        return `<figure class="source"><iframe src="${esc(src)}" title="${esc(f.name)}"></iframe><figcaption>${i + 1}. ${esc(f.name)} · <a href="${esc(src)}" target="_blank" rel="noopener">Open</a></figcaption></figure>`;
+      }
+      return `<figure class="source"><a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="Page ${i + 1}: ${esc(f.name)}"></a><figcaption>${i + 1}. ${esc(f.name)}</figcaption></figure>`;
+    }).join('') || '<p class="muted">No files attached.</p>';
   }
 
   // ---------- Profile ----------
-  const PROFILE_KEY = 'hh-profile';
-  const REPORT_KEY = 'hh-full-report';
-  function profile() { return store.get(PROFILE_KEY, {}); }
-
   function paintAvatar() {
-    const name = (profile().name || '').trim();
-    const initial = name ? name[0].toUpperCase() : 'H';
+    const name = (profileData.name || '').trim();
+    const initial = (name || user?.email || 'H')[0].toUpperCase();
     $('#avatarInitial').textContent = initial;
     $('#profileInitial').textContent = initial;
     $('#profileName').textContent = name || 'Your profile';
+    $('#profileEmail').textContent = user?.email || '';
   }
 
   function renderProfile() {
-    const p = profile();
     const form = $('#profileForm');
-    for (const el of form.elements) if (el.name) el.value = p[el.name] || '';
+    for (const el of form.elements) if (el.name) el.value = profileData[el.name] || '';
     paintAvatar();
     const scanned = entries.filter((e) => e.scanned);
     $('#statRecords').textContent = entries.length;
     $('#statDoctors').textContent = new Set(scanned.map((e) => e.doctor).filter(Boolean)).size;
     const dated = scanned.map((e) => e.date).filter(Boolean).sort();
     $('#statLast').textContent = dated.length ? fmtDate(dated[dated.length - 1]) : '—';
-    renderFullReport(store.get(REPORT_KEY, null));
+    renderFullReport(fullReport);
+    $('#genReportBtn').textContent = fullReport ? 'Regenerate' : 'Generate with AI';
   }
 
   function list(items) {
@@ -425,7 +594,7 @@
     const el = $('#fullReport');
     $('#printBtn').hidden = !r;
     if (!r) { el.innerHTML = ''; return; }
-    const p = profile();
+    const p = profileData;
     el.innerHTML = `
       <p><strong>${esc(p.name || 'Patient')}</strong>${p.dob ? ` · DOB ${esc(fmtDate(p.dob))}` : ''}${p.sex ? ` · ${esc(p.sex)}` : ''}${p.blood ? ` · Blood group ${esc(p.blood)}` : ''}</p>
       <h3>Overview</h3><p>${esc(r.overview)}</p>
@@ -447,10 +616,10 @@
     setStatus(status, spin('Building your complete health report…'));
     try {
       const records = scanned.map(({ files, id, createdAt, scanned: _s, error, ...rest }) => rest);
-      const r = await api('/api/summary', { profile: profile(), records });
+      const r = await api('/api/summary', { profile: profileData, records });
       r.generatedAt = new Date().toISOString();
       r.basedOn = scanned.length;
-      store.set(REPORT_KEY, r);
+      await saveProfile({ full_report: r });
       renderFullReport(r);
       setStatus(status, 'Done.', 'ok');
       btn.textContent = 'Regenerate';
@@ -463,14 +632,21 @@
 
   // ---------- Events ----------
   function bind() {
+    // auth
+    $('#tabLogin').addEventListener('click', () => setAuthMode('login'));
+    $('#tabSignup').addEventListener('click', () => setAuthMode('signup'));
+    $('#forgotBtn').addEventListener('click', () => setAuthMode('reset'));
+    $('#authStatus').addEventListener('click', (e) => { if (e.target.id === 'backToLogin') setAuthMode('login'); });
+    $('#authForm').addEventListener('submit', onAuthSubmit);
+    $('#logoutBtn').addEventListener('click', async () => { await sb.auth.signOut(); });
+
+    // upload
     $('#cameraInput').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
     $('#galleryInput').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
-
     const dz = $('#dropzone');
     ['dragenter', 'dragover'].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add('drag'); }));
     ['dragleave', 'drop'].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.remove('drag'); }));
     dz.addEventListener('drop', (e) => addFiles(e.dataTransfer.files));
-
     $('#pendingList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-remove]');
       if (!b) return;
@@ -480,6 +656,7 @@
     $('#clearPending').addEventListener('click', () => { pending = []; renderPending(); setStatus($('#scanStatus'), ''); });
     $('#scanBtn').addEventListener('click', scanPending);
 
+    // history
     $('#searchInput').addEventListener('input', renderHistory);
     $('#timeline').addEventListener('click', async (e) => {
       const s = e.target.closest('[data-sources]');
@@ -487,22 +664,23 @@
       const r = e.target.closest('[data-retry]');
       if (r) return retryScan(r.dataset.retry, r);
       const d = e.target.closest('[data-delete]');
-      if (d && confirm('Delete this record and its files from this device?')) {
-        await delEntry(d.dataset.delete);
-        await loadEntries();
-        renderHistory();
+      if (d && confirm('Delete this record and its files from your account?')) {
+        try { await delEntry(d.dataset.delete); await loadEntries(); renderHistory(); }
+        catch (err) { alert('Delete failed: ' + err.message); }
       }
     });
-
     const dlg = $('#sourcesDialog');
     dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.closest('[data-close]')) dlg.close(); });
 
-    $('#profileForm').addEventListener('submit', (e) => {
+    // profile
+    $('#profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const data = Object.fromEntries(new FormData(e.target).entries());
-      store.set(PROFILE_KEY, data);
-      paintAvatar();
-      setStatus($('#profileStatus'), 'Saved.', 'ok');
+      const status = $('#profileStatus');
+      try {
+        await saveProfile({ data: Object.fromEntries(new FormData(e.target).entries()) });
+        paintAvatar();
+        setStatus(status, 'Saved.', 'ok');
+      } catch (err) { setStatus(status, esc(err.message), 'error'); }
     });
     $('#genReportBtn').addEventListener('click', generateFullReport);
     $('#printBtn').addEventListener('click', () => {
@@ -511,43 +689,49 @@
       window.print();
       panel.classList.remove('print-me');
     });
-
-    $('#exportBtn').addEventListener('click', async () => {
-      const blob = new Blob([JSON.stringify({ app: 'health-history', version: 1, profile: profile(), entries: await getAll() })], { type: 'application/json' });
+    $('#exportBtn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify({ app: 'health-history', version: 2, email: user.email, profile: profileData, fullReport, entries }, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `health-history-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     });
-    $('#importInput').addEventListener('change', async (e) => {
-      const f = e.target.files[0];
-      e.target.value = '';
-      if (!f) return;
-      try {
-        const data = JSON.parse(await f.text());
-        if (data.app !== 'health-history' || !Array.isArray(data.entries)) throw new Error('Not a Health History backup');
-        for (const en of data.entries) if (en && en.id) await putEntry(en);
-        if (data.profile) store.set(PROFILE_KEY, data.profile);
-        await loadEntries();
-        renderProfile();
-        alert(`Imported ${data.entries.length} record(s).`);
-      } catch (err) { alert('Import failed: ' + err.message); }
-    });
     $('#wipeBtn').addEventListener('click', async () => {
-      if (!confirm('Delete ALL records, files and profile from this device? This cannot be undone.')) return;
-      await clearAll();
-      store.del(PROFILE_KEY); store.del(REPORT_KEY);
-      await loadEntries();
-      renderProfile();
+      if (!confirm('Delete ALL your records and report files? This cannot be undone.')) return;
+      try { await clearAll(); await loadEntries(); renderProfile(); }
+      catch (err) { alert('Delete failed: ' + err.message); }
     });
   }
 
   // ---------- Boot ----------
   (async function init() {
+    if (!sb) {
+      document.body.classList.add('signed-out');
+      showView('auth');
+      $('#authForm').hidden = true;
+      $('.tabs').hidden = true;
+      setStatus($('#authStatus'), 'Setup pending: add your Supabase URL and key in config.js.', 'error');
+      $('#authForm').after($('#authStatus'));
+      return;
+    }
     bind();
-    paintAvatar();
-    try { await loadEntries(); } catch { entries = []; }
-    route();
+    document.body.classList.add('signed-out');
+    setAuthMode('login');
+    sb.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY' || (recoveryMode && event === 'SIGNED_IN')) {
+        recoveryMode = true;
+        document.body.classList.add('signed-out');
+        showView('auth');
+        setAuthMode('newpass');
+        return;
+      }
+      if (event === 'SIGNED_OUT') onSignedOut();
+      if (event === 'SIGNED_IN' && s?.user?.id !== user?.id) onSignedIn(s);
+    });
+    const { data } = await sb.auth.getSession();
+    if (recoveryMode) { showView('auth'); setAuthMode('newpass'); }
+    else if (data.session) await onSignedIn(data.session);
+    else showView('auth');
   })();
 })();

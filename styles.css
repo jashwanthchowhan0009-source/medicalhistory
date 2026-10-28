@@ -252,3 +252,20 @@ main { outline: none; }
   .view:not(#view-profile) { display: none !important; }
   .panel.print-me { border: 0; padding: 0; }
 }
+
+/* ---------- Auth ---------- */
+body.signed-out .nav-desktop,
+body.signed-out .nav-mobile,
+body.signed-out .avatar { display: none !important; }
+body.signed-out { padding-bottom: 0; }
+.auth-wrap { max-width: 460px; }
+.auth-card { border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 28px 22px; box-shadow: var(--shadow); }
+@media (min-width: 560px) { .auth-card { padding: 36px 32px; } }
+.auth-card h1 { font-size: 30px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 20px 0; border: 1.5px solid var(--ink); border-radius: 999px; }
+.tabs button { min-height: 40px; border: 0; border-radius: 999px; background: none; font: 600 14px var(--sans); color: var(--ink); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--green); color: #fff; }
+.auth-form { display: grid; gap: 14px; }
+.auth-form .link-btn { justify-self: center; }
+.hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.loading-screen { display: grid; place-items: center; min-height: 50vh; color: var(--muted); }

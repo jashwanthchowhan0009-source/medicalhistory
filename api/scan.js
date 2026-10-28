@@ -2,7 +2,7 @@
 // Body: { files: [{ name, mediaType: "image/jpeg" | "application/pdf", data: <base64> }] }
 // Returns: { entries: [ ...structured health records ] }
 
-import { askClaude, readBody, send } from './_claude.js';
+import { askClaude, readBody, send, requireUser } from './_claude.js';
 
 export const config = { maxDuration: 60 };
 
@@ -37,6 +37,7 @@ The // notes above explain each field; do not include comments in your JSON. If 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
   try {
+    await requireUser(req);
     const { files } = readBody(req);
     if (!Array.isArray(files) || !files.length) return send(res, 400, { error: 'No files received' });
     if (files.length > 10) return send(res, 400, { error: 'Up to 10 files per scan' });

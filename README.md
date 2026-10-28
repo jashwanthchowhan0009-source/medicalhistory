@@ -26,20 +26,22 @@ Browser (index.html + app.js)                Vercel serverless
 ```
 
 - No build step — plain HTML/CSS/JS.
-- Data is stored **on the device** (IndexedDB). Files go to the AI only during a scan. If a scan fails, files are still saved and can be re-scanned.
+- **Login with email + password** (Supabase Auth). Records are saved to the user's account (Postgres) and report files to a private storage bucket — Row Level Security means each user sees only their own data, on any device.
+- AI endpoints only work for logged-in users. Files go to the AI only during a scan; if a scan fails the files are still saved and can be re-scanned.
 - Multiple uploads from different visits are split into separate records and dated automatically.
 
 ## Deploy (Vercel)
 
 1. Import this repo in Vercel (Framework preset: **Other**, no build command).
-2. Add environment variable `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`).
-3. Deploy. Done.
+2. Supabase: run `supabase/schema.sql` in the SQL editor, put the project URL + publishable key in `config.js`.
+3. Vercel environment variables: `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (optional `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`).
+4. Supabase → Authentication → URL Configuration: set Site URL to your Vercel URL (for confirmation & password-reset emails).
+5. Deploy.
 
 Local: `npm i -g vercel && vercel dev` (needs `.env` — see `.env.example`).
 
 ## Next steps
 
-- Login + cloud sync (e.g. Neon Postgres + object storage) so records follow the user across devices
 - Family profiles (parents, kids) under one account
 - Share a record or the complete report with a doctor via a time-limited link
 
