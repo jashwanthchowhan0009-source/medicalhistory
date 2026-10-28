@@ -6,7 +6,7 @@ import { askClaude, readBody, send, requireUser } from './_claude.js';
 
 export const config = { maxDuration: 60 };
 
-const SYSTEM = `You read photos and PDFs of personal health documents (lab reports, prescriptions, doctor notes, discharge summaries, scan reports, pharmacy and hospital bills) for an app called Health History.
+const SYSTEM = `You read photos and PDFs of personal health documents (lab reports, prescriptions, doctor notes, discharge summaries, scan reports, pharmacy and hospital bills) for an app called Medical History.
 
 The user may upload several documents in ANY order, possibly from different visits. Group pages that belong to the same visit/report together, and create one record per visit/report. Read every word, including handwriting, as carefully as you can. Never invent values: if something is not written, leave it as an empty string or empty list.
 

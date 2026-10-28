@@ -1,9 +1,13 @@
 {
-  "name": "Health History",
-  "short_name": "Health History",
+  "name": "Medical History",
+  "short_name": "Medical History",
+  "description": "Your family's medical reports, prescriptions and bills in one place.",
   "start_url": "/#home",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#1E6B47",
-  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "background_color": "#FAFAF7",
+  "theme_color": "#00930A",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }

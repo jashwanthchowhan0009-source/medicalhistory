@@ -55,8 +55,9 @@ export function send(res, status, obj) {
 // Only signed-in users may call the AI endpoints (protects API credits).
 // Verifies the Supabase access token sent as "Authorization: Bearer <token>".
 export async function requireUser(req) {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  // Public values (same as config.js); env vars override them.
+  const url = process.env.SUPABASE_URL || 'https://bbybbeqcbdzixobpqyif.supabase.co';
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_dfqskl_zehIpYPekrRtunw_neVpeAYv';
   if (!url || !key) {
     throw Object.assign(new Error('Server is missing SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.'), { status: 500 });
   }

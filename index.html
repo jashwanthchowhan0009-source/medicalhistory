@@ -3,53 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1E6B47">
-  <meta name="description" content="Health History — keep all your health reports, prescriptions and bills in one place. Upload in any order; AI reads them and builds your timeline.">
-  <title>Health History</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#00930A">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Medical History — keep every report, prescription and bill for your whole family in one place. Upload in any order; AI reads them and builds each person's timeline.">
+  <title>Medical History</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <script>
+    // apply saved theme before paint (auto | light | dark)
+    try { var t = localStorage.getItem('mh-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="signed-out">
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#home" aria-label="Health History home">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
-        </span>
-        <span class="brand-name">Health History</span>
+      <a class="brand" href="#home" aria-label="Medical History home">
+        <img class="brand-logo" src="assets/logo-primary.png" alt="" width="36" height="36">
+        <span class="brand-name">Medical History</span>
       </a>
+
       <nav class="nav-desktop" aria-label="Main">
         <a href="#home" data-nav="home">Home</a>
         <a href="#history" data-nav="history">History</a>
         <a href="#profile" data-nav="profile">Profile</a>
       </nav>
-      <a class="avatar" href="#profile" id="avatarBtn" aria-label="Open profile"><span id="avatarInitial">H</span></a>
+
+      <div class="top-actions">
+        <div class="patient-switch">
+          <label class="sr-only" for="patientSelect">Viewing records of</label>
+          <select id="patientSelect"></select>
+        </div>
+        <button class="icon-btn" type="button" id="themeBtn" aria-label="Change theme">
+          <svg class="i-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+        </button>
+        <a class="avatar" href="#profile" aria-label="Open profile"><span id="avatarInitial">M</span></a>
+      </div>
     </div>
   </header>
 
   <main id="main" tabindex="-1">
 
     <!-- ============ AUTH ============ -->
-    <section class="view" id="view-auth" data-view="auth" aria-labelledby="authTitle" hidden>
+    <section class="view" id="view-auth" data-view="auth" aria-labelledby="authTitle">
       <div class="container auth-wrap">
         <div class="auth-card">
+          <img class="auth-logo" src="assets/logo-primary.png" alt="Medical History logo" width="88" height="88">
           <p class="eyebrow" id="authEyebrow">Welcome</p>
-          <h1 id="authTitle">Log in to Health History</h1>
-          <p class="muted" id="authSub">Your reports are saved to your account and available on any device.</p>
+          <h1 id="authTitle">Log in to Medical History</h1>
+          <p class="muted" id="authSub">One account for your whole family’s reports — on any device.</p>
 
           <div class="tabs" role="tablist" aria-label="Account">
-            <button type="button" role="tab" id="tabLogin" aria-selected="true" data-mode="login">Log in</button>
-            <button type="button" role="tab" id="tabSignup" aria-selected="false" data-mode="signup">Create account</button>
+            <button type="button" role="tab" id="tabLogin" aria-selected="true">Log in</button>
+            <button type="button" role="tab" id="tabSignup" aria-selected="false">Create account</button>
           </div>
 
           <form id="authForm" class="auth-form" novalidate>
-            <div class="field" id="nameField" hidden>
-              <label for="au-name">Full name</label>
-              <input id="au-name" name="name" type="text" autocomplete="name">
-            </div>
             <div class="field">
               <label for="au-email">Email</label>
               <input id="au-email" name="email" type="email" autocomplete="email" required>
@@ -67,12 +80,73 @@
       </div>
     </section>
 
-    <!-- ============ HOME ============ -->
-    <section class="view" id="view-home" data-view="home" aria-labelledby="homeTitle">
+    <!-- ============ PATIENT FORM (add / edit) ============ -->
+    <section class="view" id="view-patient" data-view="patient" aria-labelledby="pTitle" hidden>
       <div class="container narrow">
-        <p class="eyebrow">Your records, in one place</p>
-        <h1 id="homeTitle">Upload your reports, bills &amp; prescriptions</h1>
-        <p class="lead">Add them in any order. Our AI reads everything written on them — lab values, doctor’s advice, tablets prescribed — and arranges it into your health timeline.</p>
+        <p class="eyebrow" id="pEyebrow">Patient</p>
+        <h1 id="pTitle">Add a patient</h1>
+        <p class="lead" id="pLead">Add up to 6 family members to one account. Aadhaar is required for every patient.</p>
+
+        <form id="patientForm" class="panel form-grid" novalidate>
+          <div class="field span-2"><label for="pt-name">Full name <span class="req">*</span></label><input id="pt-name" name="name" type="text" autocomplete="name" required></div>
+          <div class="field"><label for="pt-relation">Relation to you <span class="req">*</span></label>
+            <select id="pt-relation" name="relation" required>
+              <option>Self</option><option>Spouse</option><option>Father</option><option>Mother</option><option>Son</option><option>Daughter</option><option>Brother</option><option>Sister</option><option>Grandparent</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label for="pt-dob">Date of birth <span class="req">*</span></label><input id="pt-dob" name="dob" type="date" required></div>
+
+          <div class="field span-2">
+            <label for="pt-aadhaar">Aadhaar number <span class="req">*</span></label>
+            <input id="pt-aadhaar" name="aadhaar" type="text" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012" maxlength="14">
+            <p class="hint" id="aadhaarHint">12 digits. For your privacy only the last 4 digits are stored.</p>
+          </div>
+
+          <div class="field"><label for="pt-sex">Sex <span class="req">*</span></label>
+            <select id="pt-sex" name="sex" required><option value="">Select</option><option>Female</option><option>Male</option><option>Other</option></select>
+          </div>
+          <div class="field"><label for="pt-blood">Blood group</label>
+            <select id="pt-blood" name="blood"><option value="">Not known</option><option>A+</option><option>A−</option><option>B+</option><option>B−</option><option>AB+</option><option>AB−</option><option>O+</option><option>O−</option></select>
+          </div>
+          <div class="field"><label for="pt-phone">Mobile number</label><input id="pt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91"></div>
+          <div class="field"><label for="pt-emergency">Emergency contact</label><input id="pt-emergency" name="emergency" type="tel" inputmode="tel" placeholder="Name & number"></div>
+
+          <fieldset class="span-2 fieldset">
+            <legend>Health card <span class="muted">(if you have one)</span></legend>
+            <div class="form-grid">
+              <div class="field"><label for="pt-abha">ABHA number</label><input id="pt-abha" name="abha" type="text" inputmode="numeric" placeholder="14-digit ABHA" maxlength="17"></div>
+              <div class="field"><label for="pt-cardtype">Other card</label>
+                <select id="pt-cardtype" name="cardType"><option value="">None</option><option>Ayushman Bharat (PM-JAY)</option><option>Aarogyasri</option><option>CGHS</option><option>ESIC</option><option>Health insurance</option><option>Other</option></select>
+              </div>
+              <div class="field"><label for="pt-cardno">Card / policy number</label><input id="pt-cardno" name="cardNumber" type="text" autocomplete="off"></div>
+              <div class="field"><label for="pt-insurer">Insurer / scheme name</label><input id="pt-insurer" name="insurer" type="text"></div>
+            </div>
+          </fieldset>
+
+          <div class="field"><label for="pt-height">Height (cm)</label><input id="pt-height" name="height" type="number" inputmode="decimal" min="30" max="250"></div>
+          <div class="field"><label for="pt-weight">Weight (kg)</label><input id="pt-weight" name="weight" type="number" inputmode="decimal" min="1" max="350"></div>
+          <div class="field span-2"><label for="pt-allergies">Allergies</label><input id="pt-allergies" name="allergies" type="text" placeholder="e.g. Penicillin, peanuts"></div>
+          <div class="field span-2"><label for="pt-conditions">Ongoing conditions</label><input id="pt-conditions" name="conditions" type="text" placeholder="e.g. Thyroid, BP, Diabetes"></div>
+
+          <label class="check span-2"><input type="checkbox" id="pt-consent" required> I confirm I have this person’s permission to store their medical records.</label>
+
+          <div class="span-2 form-actions">
+            <button class="btn btn-primary" type="submit" id="patientSave">Save patient</button>
+            <a class="btn btn-outline" href="#profile" id="patientCancel">Cancel</a>
+            <span class="spacer"></span>
+            <button class="link-btn danger" type="button" id="patientDelete" hidden>Delete patient</button>
+          </div>
+          <p class="status span-2" id="patientStatus" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ HOME ============ -->
+    <section class="view" id="view-home" data-view="home" aria-labelledby="homeTitle" hidden>
+      <div class="container narrow">
+        <p class="eyebrow">Adding for <span id="homePatient">—</span></p>
+        <h1 id="homeTitle">Upload reports, bills &amp; prescriptions</h1>
+        <p class="lead">Add them in any order. Our AI reads everything written on them — lab values, doctor’s advice, tablets prescribed — and arranges it into a timeline.</p>
 
         <div class="dropzone" id="dropzone">
           <div class="dz-icon" aria-hidden="true">
@@ -92,7 +166,7 @@
           </div>
           <input class="sr-only" type="file" id="cameraInput" accept="image/*" capture="environment">
           <input class="sr-only" type="file" id="galleryInput" accept="image/*,application/pdf" multiple>
-          <p class="dz-formats">JPG, PNG, HEIC or PDF · up to 10 files at a time</p>
+          <p class="dz-formats">JPG, PNG or PDF · up to 10 files at a time</p>
         </div>
 
         <div class="pending" id="pending" hidden>
@@ -111,7 +185,7 @@
         <ol class="steps" aria-label="How it works">
           <li><span class="step-n">1</span><div><strong>Upload</strong><p>Photos or PDFs of lab reports, prescriptions, discharge summaries and bills.</p></div></li>
           <li><span class="step-n">2</span><div><strong>AI reads it</strong><p>Who made the report, what it says in simple words, which doctor you saw and what they prescribed.</p></div></li>
-          <li><span class="step-n">3</span><div><strong>Your timeline</strong><p>Everything lands in History, sorted by date, with the original photos one tap away.</p></div></li>
+          <li><span class="step-n">3</span><div><strong>Timeline</strong><p>Everything lands in History, sorted by date, with the original photos one tap away.</p></div></li>
         </ol>
 
         <section class="recent" id="recentWrap" hidden aria-labelledby="recentTitle">
@@ -129,7 +203,7 @@
       <div class="container">
         <div class="page-head">
           <div>
-            <p class="eyebrow">Timeline</p>
+            <p class="eyebrow">Timeline · <span id="historyPatient">—</span></p>
             <h1 id="historyTitle">History</h1>
           </div>
           <div class="search">
@@ -140,8 +214,9 @@
         </div>
         <ol class="timeline" id="timeline"></ol>
         <div class="empty" id="historyEmpty" hidden>
+          <img class="mark" src="assets/logo-mark-green.png" alt="" width="56" height="56">
           <h2 class="h3">No records yet</h2>
-          <p>Upload your first report and it will appear here.</p>
+          <p>Upload the first report and it will appear here.</p>
           <a class="btn btn-primary" href="#home">Upload a report</a>
         </div>
       </div>
@@ -151,36 +226,33 @@
     <section class="view" id="view-profile" data-view="profile" aria-labelledby="profileTitle" hidden>
       <div class="container narrow">
         <div class="profile-head">
-          <div class="avatar avatar-lg" aria-hidden="true"><span id="profileInitial">H</span></div>
+          <div class="avatar avatar-lg" aria-hidden="true"><span id="profileInitial">M</span></div>
           <div>
-            <p class="eyebrow">Profile</p>
-            <h1 id="profileTitle"><span id="profileName">Your profile</span></h1>
+            <p class="eyebrow">Account</p>
+            <h1 id="profileTitle">Profile</h1>
             <p class="muted" id="profileEmail"></p>
           </div>
         </div>
 
-        <dl class="stats" id="stats">
-          <div><dt>Records</dt><dd id="statRecords">0</dd></div>
-          <div><dt>Doctors</dt><dd id="statDoctors">0</dd></div>
-          <div><dt>Last visit</dt><dd id="statLast">—</dd></div>
-        </dl>
+        <section class="panel" aria-labelledby="patientsTitle">
+          <div class="section-head">
+            <h2 class="h3" id="patientsTitle">Patients <span class="muted" id="patientCount"></span></h2>
+            <a class="btn btn-primary btn-sm" href="#patient/new" id="addPatientBtn">+ Add patient</a>
+          </div>
+          <ul class="patient-list" id="patientList"></ul>
+        </section>
 
-        <section class="panel" aria-labelledby="detailsTitle">
-          <h2 class="h3" id="detailsTitle">Personal details</h2>
-          <form id="profileForm" class="form-grid" autocomplete="on">
-            <div class="field span-2"><label for="pf-name">Full name</label><input id="pf-name" name="name" type="text" autocomplete="name"></div>
-            <div class="field"><label for="pf-dob">Date of birth</label><input id="pf-dob" name="dob" type="date" autocomplete="bday"></div>
-            <div class="field"><label for="pf-sex">Sex</label>
-              <select id="pf-sex" name="sex"><option value="">—</option><option>Female</option><option>Male</option><option>Other</option></select>
-            </div>
-            <div class="field"><label for="pf-blood">Blood group</label>
-              <select id="pf-blood" name="blood"><option value="">—</option><option>A+</option><option>A−</option><option>B+</option><option>B−</option><option>AB+</option><option>AB−</option><option>O+</option><option>O−</option></select>
-            </div>
-            <div class="field"><label for="pf-phone">Emergency contact</label><input id="pf-phone" name="emergency" type="tel" autocomplete="tel"></div>
-            <div class="field span-2"><label for="pf-allergies">Allergies</label><input id="pf-allergies" name="allergies" type="text" placeholder="e.g. Penicillin, peanuts"></div>
-            <div class="field span-2"><label for="pf-conditions">Ongoing conditions</label><input id="pf-conditions" name="conditions" type="text" placeholder="e.g. Thyroid, BP"></div>
-            <div class="span-2 form-actions"><button class="btn btn-primary" type="submit">Save details</button><span class="status" id="profileStatus" role="status" aria-live="polite"></span></div>
-          </form>
+        <section class="panel" aria-labelledby="activeTitle">
+          <div class="section-head">
+            <h2 class="h3" id="activeTitle">—</h2>
+            <a class="btn btn-outline btn-sm" href="#" id="editActive">Edit details</a>
+          </div>
+          <dl class="details" id="activeDetails"></dl>
+          <dl class="stats">
+            <div><dt>Records</dt><dd id="statRecords">0</dd></div>
+            <div><dt>Doctors</dt><dd id="statDoctors">0</dd></div>
+            <div><dt>Last visit</dt><dd id="statLast">—</dd></div>
+          </dl>
         </section>
 
         <section class="panel" aria-labelledby="fullTitle">
@@ -188,19 +260,18 @@
             <h2 class="h3" id="fullTitle">Complete health report</h2>
             <button class="btn btn-outline btn-sm" type="button" id="printBtn" hidden>Print / PDF</button>
           </div>
-          <p class="muted">One summary built from every record you’ve stored — useful to show any new doctor.</p>
+          <p class="muted">One summary built from every record of this patient — useful to show any new doctor.</p>
           <div id="fullReport" class="full-report"></div>
           <button class="btn btn-primary" type="button" id="genReportBtn">Generate with AI</button>
           <p class="status" id="genStatus" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel" aria-labelledby="dataTitle">
-          <h2 class="h3" id="dataTitle">Your data</h2>
+          <h2 class="h3" id="dataTitle">Account &amp; data</h2>
           <p class="muted">Records are saved privately to your account — only you can see them. Files are sent to the AI only while scanning.</p>
           <div class="row-actions">
             <button class="btn btn-outline" type="button" id="exportBtn">Export backup</button>
             <button class="btn btn-outline" type="button" id="logoutBtn">Log out</button>
-            <button class="btn btn-danger" type="button" id="wipeBtn">Delete all records</button>
           </div>
         </section>
       </div>
@@ -208,10 +279,10 @@
   </main>
 
   <footer class="footer">
-    <p>Health History helps you organise records. It is not medical advice — always talk to your doctor.</p>
+    <img class="footer-mark" src="assets/logo-mark-green.png" alt="" width="28" height="28">
+    <p>Medical History helps you organise records. It is not medical advice — always talk to your doctor.</p>
   </footer>
 
-  <!-- Mobile bottom navigation (from the sketch: Home | History pill) -->
   <nav class="nav-mobile" aria-label="Main">
     <a href="#home" data-nav="home">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg>
@@ -223,7 +294,6 @@
     </a>
   </nav>
 
-  <!-- Sources dialog -->
   <dialog id="sourcesDialog" class="dialog" aria-labelledby="sourcesTitle">
     <div class="dialog-head">
       <h2 class="h3" id="sourcesTitle">Sources</h2>

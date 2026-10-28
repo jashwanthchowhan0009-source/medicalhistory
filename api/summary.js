@@ -6,7 +6,7 @@ import { askClaude, readBody, send, requireUser } from './_claude.js';
 
 export const config = { maxDuration: 60 };
 
-const SYSTEM = `You write a "complete health report" for the Health History app, combining all of a person's stored records into one summary they can show a new doctor.
+const SYSTEM = `You write a "complete health report" for the Medical History app, combining all of a person's stored records into one summary they can show a new doctor.
 
 Use ONLY the information given. Do not invent anything and do not add your own diagnosis. Use simple, clear language. Mention dates (e.g. "Jan 2020") where they help.
 
