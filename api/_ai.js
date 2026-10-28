@@ -52,8 +52,8 @@ export function send(res, status, obj) {
 
 // Only signed-in users may call the AI endpoints (protects the API quota).
 export async function requireUser(req) {
-  const url = process.env.SUPABASE_URL || 'https://bbybbeqcbdzixobpqyif.supabase.co';
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_dfqskl_zehIpYPekrRtunw_neVpeAYv';
+  const url = process.env.SUPABASE_URL || 'https://zjbkhtwgfjdvidurzstl.supabase.co';
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_EJZwPW5JGCrWUHasLCsksQ_lnJVSH9W';
   const auth = req.headers.authorization || '';
   const tokenValue = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!tokenValue) throw Object.assign(new Error('Please log in again.'), { status: 401 });
