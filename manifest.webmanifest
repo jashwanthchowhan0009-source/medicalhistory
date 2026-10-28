@@ -1,0 +1,9 @@
+{
+  "name": "Health History",
+  "short_name": "Health History",
+  "start_url": "/#home",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1E6B47",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

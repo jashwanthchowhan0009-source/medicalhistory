@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1E6B47">
+  <meta name="description" content="Health History — keep all your health reports, prescriptions and bills in one place. Upload in any order; AI reads them and builds your timeline.">
+  <title>Health History</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#home" aria-label="Health History home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+        </span>
+        <span class="brand-name">Health History</span>
+      </a>
+      <nav class="nav-desktop" aria-label="Main">
+        <a href="#home" data-nav="home">Home</a>
+        <a href="#history" data-nav="history">History</a>
+        <a href="#profile" data-nav="profile">Profile</a>
+      </nav>
+      <a class="avatar" href="#profile" id="avatarBtn" aria-label="Open profile"><span id="avatarInitial">H</span></a>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+
+    <!-- ============ HOME ============ -->
+    <section class="view" id="view-home" data-view="home" aria-labelledby="homeTitle">
+      <div class="container narrow">
+        <p class="eyebrow">Your records, in one place</p>
+        <h1 id="homeTitle">Upload your reports, bills &amp; prescriptions</h1>
+        <p class="lead">Add them in any order. Our AI reads everything written on them — lab values, doctor’s advice, tablets prescribed — and arranges it into your health timeline.</p>
+
+        <div class="dropzone" id="dropzone">
+          <div class="dz-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="m9 14 3-3 3 3"/></svg>
+          </div>
+          <h2 class="dz-title">Upload Report</h2>
+          <p class="dz-hint desktop-only">Drag &amp; drop files here, or choose an option</p>
+          <div class="dz-actions">
+            <label class="btn btn-primary" for="cameraInput">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              Take photo
+            </label>
+            <label class="btn btn-outline" for="galleryInput">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
+              Gallery / Files
+            </label>
+          </div>
+          <input class="sr-only" type="file" id="cameraInput" accept="image/*" capture="environment">
+          <input class="sr-only" type="file" id="galleryInput" accept="image/*,application/pdf" multiple>
+          <p class="dz-formats">JPG, PNG, HEIC or PDF · up to 10 files at a time</p>
+        </div>
+
+        <div class="pending" id="pending" hidden>
+          <div class="pending-head">
+            <h2 class="h3">Ready to scan <span class="count" id="pendingCount">0</span></h2>
+            <button class="link-btn" type="button" id="clearPending">Clear</button>
+          </div>
+          <ul class="thumbs" id="pendingList"></ul>
+          <button class="btn btn-primary btn-block" type="button" id="scanBtn">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M4 12h16"/></svg>
+            Scan with AI &amp; save
+          </button>
+          <p class="status" id="scanStatus" role="status" aria-live="polite"></p>
+        </div>
+
+        <ol class="steps" aria-label="How it works">
+          <li><span class="step-n">1</span><div><strong>Upload</strong><p>Photos or PDFs of lab reports, prescriptions, discharge summaries and bills.</p></div></li>
+          <li><span class="step-n">2</span><div><strong>AI reads it</strong><p>Who made the report, what it says in simple words, which doctor you saw and what they prescribed.</p></div></li>
+          <li><span class="step-n">3</span><div><strong>Your timeline</strong><p>Everything lands in History, sorted by date, with the original photos one tap away.</p></div></li>
+        </ol>
+
+        <section class="recent" id="recentWrap" hidden aria-labelledby="recentTitle">
+          <div class="section-head">
+            <h2 class="h3" id="recentTitle">Recently added</h2>
+            <a href="#history" class="link">View all</a>
+          </div>
+          <ul class="recent-list" id="recentList"></ul>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============ HISTORY ============ -->
+    <section class="view" id="view-history" data-view="history" aria-labelledby="historyTitle" hidden>
+      <div class="container">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">Timeline</p>
+            <h1 id="historyTitle">History</h1>
+          </div>
+          <div class="search">
+            <label class="sr-only" for="searchInput">Search history</label>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" id="searchInput" placeholder="Search doctor, test, tablet…">
+          </div>
+        </div>
+        <ol class="timeline" id="timeline"></ol>
+        <div class="empty" id="historyEmpty" hidden>
+          <h2 class="h3">No records yet</h2>
+          <p>Upload your first report and it will appear here.</p>
+          <a class="btn btn-primary" href="#home">Upload a report</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROFILE ============ -->
+    <section class="view" id="view-profile" data-view="profile" aria-labelledby="profileTitle" hidden>
+      <div class="container narrow">
+        <div class="profile-head">
+          <div class="avatar avatar-lg" aria-hidden="true"><span id="profileInitial">H</span></div>
+          <div>
+            <p class="eyebrow">Profile</p>
+            <h1 id="profileTitle"><span id="profileName">Your profile</span></h1>
+          </div>
+        </div>
+
+        <dl class="stats" id="stats">
+          <div><dt>Records</dt><dd id="statRecords">0</dd></div>
+          <div><dt>Doctors</dt><dd id="statDoctors">0</dd></div>
+          <div><dt>Last visit</dt><dd id="statLast">—</dd></div>
+        </dl>
+
+        <section class="panel" aria-labelledby="detailsTitle">
+          <h2 class="h3" id="detailsTitle">Personal details</h2>
+          <form id="profileForm" class="form-grid" autocomplete="on">
+            <div class="field span-2"><label for="pf-name">Full name</label><input id="pf-name" name="name" type="text" autocomplete="name"></div>
+            <div class="field"><label for="pf-dob">Date of birth</label><input id="pf-dob" name="dob" type="date" autocomplete="bday"></div>
+            <div class="field"><label for="pf-sex">Sex</label>
+              <select id="pf-sex" name="sex"><option value="">—</option><option>Female</option><option>Male</option><option>Other</option></select>
+            </div>
+            <div class="field"><label for="pf-blood">Blood group</label>
+              <select id="pf-blood" name="blood"><option value="">—</option><option>A+</option><option>A−</option><option>B+</option><option>B−</option><option>AB+</option><option>AB−</option><option>O+</option><option>O−</option></select>
+            </div>
+            <div class="field"><label for="pf-phone">Emergency contact</label><input id="pf-phone" name="emergency" type="tel" autocomplete="tel"></div>
+            <div class="field span-2"><label for="pf-allergies">Allergies</label><input id="pf-allergies" name="allergies" type="text" placeholder="e.g. Penicillin, peanuts"></div>
+            <div class="field span-2"><label for="pf-conditions">Ongoing conditions</label><input id="pf-conditions" name="conditions" type="text" placeholder="e.g. Thyroid, BP"></div>
+            <div class="span-2 form-actions"><button class="btn btn-primary" type="submit">Save details</button><span class="status" id="profileStatus" role="status" aria-live="polite"></span></div>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="fullTitle">
+          <div class="section-head">
+            <h2 class="h3" id="fullTitle">Complete health report</h2>
+            <button class="btn btn-outline btn-sm" type="button" id="printBtn" hidden>Print / PDF</button>
+          </div>
+          <p class="muted">One summary built from every record you’ve stored — useful to show any new doctor.</p>
+          <div id="fullReport" class="full-report"></div>
+          <button class="btn btn-primary" type="button" id="genReportBtn">Generate with AI</button>
+          <p class="status" id="genStatus" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel" aria-labelledby="dataTitle">
+          <h2 class="h3" id="dataTitle">Your data</h2>
+          <p class="muted">Records are stored privately on this device. Files are sent to the AI only while scanning.</p>
+          <div class="row-actions">
+            <button class="btn btn-outline" type="button" id="exportBtn">Export backup</button>
+            <label class="btn btn-outline" for="importInput">Import backup</label>
+            <input class="sr-only" type="file" id="importInput" accept="application/json">
+            <button class="btn btn-danger" type="button" id="wipeBtn">Delete all</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Health History helps you organise records. It is not medical advice — always talk to your doctor.</p>
+  </footer>
+
+  <!-- Mobile bottom navigation (from the sketch: Home | History pill) -->
+  <nav class="nav-mobile" aria-label="Main">
+    <a href="#home" data-nav="home">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg>
+      Home
+    </a>
+    <a href="#history" data-nav="history">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      History
+    </a>
+  </nav>
+
+  <!-- Sources dialog -->
+  <dialog id="sourcesDialog" class="dialog" aria-labelledby="sourcesTitle">
+    <div class="dialog-head">
+      <h2 class="h3" id="sourcesTitle">Sources</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Close">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog-body" id="sourcesBody"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

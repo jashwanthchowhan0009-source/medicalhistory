@@ -1,0 +1,11 @@
+{
+  "name": "health-history",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Store and organise your health reports in one place. AI reads uploads and builds a timeline.",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
