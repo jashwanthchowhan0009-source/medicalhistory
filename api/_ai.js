@@ -20,7 +20,13 @@ export async function askAI({ system, content, maxTokens = 8192 }) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: maxTokens, responseMimeType: 'application/json' },
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: maxTokens,
+        responseMimeType: 'application/json',
+        // keep "thinking" small so the answer itself has room (thinking tokens count against the output limit)
+        thinkingConfig: { thinkingBudget: 1024 },
+      },
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -28,17 +34,66 @@ export async function askAI({ system, content, maxTokens = 8192 }) {
     const msg = data?.error?.message || `AI error (${res.status})`;
     throw Object.assign(new Error(res.status === 429 ? 'AI is busy (rate limit). Try again in a minute.' : msg), { status: 502 });
   }
-  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+  const cand = data.candidates?.[0] || {};
+  const text = (cand.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
+  if (cand.finishReason === 'SAFETY' || cand.finishReason === 'PROHIBITED_CONTENT') {
+    throw Object.assign(new Error('The AI refused to read this file.'), { status: 422 });
+  }
   if (!text) throw Object.assign(new Error('AI returned an empty answer — the file may be unreadable.'), { status: 502 });
-  return parseJSON(text);
+  try {
+    return parseJSON(text);
+  } catch (e) {
+    const truncated = cand.finishReason === 'MAX_TOKENS';
+    throw Object.assign(new Error(truncated ? 'Too much to read in one go.' : 'AI returned an unreadable answer'), { status: 502, code: truncated ? 'TOO_LONG' : 'BAD_JSON' });
+  }
 }
 
 export function parseJSON(text) {
   const cleaned = String(text).replace(/```(?:json)?/gi, '').trim();
   const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start === -1 || end === -1) throw Object.assign(new Error('AI returned an unreadable answer'), { status: 502 });
-  return JSON.parse(cleaned.slice(start, end + 1));
+  if (start === -1) throw new Error('no JSON object');
+  const body = cleaned.slice(start);
+  const end = body.lastIndexOf('}');
+  const attempts = [
+    end === -1 ? body : body.slice(0, end + 1),
+    stripComments(end === -1 ? body : body.slice(0, end + 1)),
+    closeTruncated(stripComments(body)),
+  ];
+  for (const a of attempts) { try { return JSON.parse(a); } catch { /* next */ } }
+  throw new Error('unparseable JSON');
+}
+
+// remove // comments and trailing commas that models sometimes add
+function stripComments(s) {
+  let out = '', inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    out += c;
+  }
+  return out.replace(/,\s*([}\]])/g, '$1');
+}
+
+// best-effort repair of a cut-off answer: drop the unfinished tail and close open brackets
+function closeTruncated(s) {
+  const stack = []; let inStr = false, esc = false, lastSafe = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') stack.push(c === '{' ? '}' : ']');
+    else if (c === '}' || c === ']') { stack.pop(); lastSafe = i + 1; }
+    else if (c === ',') lastSafe = i;
+  }
+  let head = s.slice(0, lastSafe).replace(/,\s*$/, '');
+  const st = []; inStr = false; esc = false;
+  for (const c of head) {
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true; else if (c === '{' || c === '[') st.push(c === '{' ? '}' : ']'); else if (c === '}' || c === ']') st.pop();
+  }
+  return head + st.reverse().join('');
 }
 
 export function readBody(req) {

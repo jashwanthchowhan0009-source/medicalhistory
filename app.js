@@ -409,7 +409,7 @@
 
   // ---------- Upload / pending ----------
   const MAX_FILES = 10;
-  const MAX_SIDE = 1800;
+  const MAX_SIDE = 1600;
   const MAX_PDF_BYTES = 3.5e6;
   let pending = [];
 
@@ -434,7 +434,7 @@
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-      return c.toDataURL('image/jpeg', 0.85);
+      return c.toDataURL('image/jpeg', 0.82);
     } finally { URL.revokeObjectURL(url); }
   }
 
@@ -479,22 +479,29 @@
     });
     let data = null;
     try { data = await res.json(); } catch { /* non-JSON */ }
-    if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+    if (!res.ok) {
+      const msg = res.status === 413 ? 'Files too large for one request.'
+        : res.status === 504 ? 'The AI took too long.'
+        : (data && data.error) || `Request failed (${res.status})`;
+      throw Object.assign(new Error(msg), { status: res.status, code: data && data.code });
+    }
     return data;
   }
   const toApiFile = async (f) => ({ name: f.name, mediaType: f.mediaType, data: (await fileAsDataURL(f)).split(',')[1] });
 
   function entryFromAI(ai, files) {
     const idx = Array.isArray(ai.sourceIndexes) && ai.sourceIndexes.length ? ai.sourceIndexes : files.map((_, i) => i);
+    const arr = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
+    const str = (v) => (v == null ? '' : String(v));
     return {
       id: uid(), createdAt: new Date().toISOString(), scanned: true,
-      date: ai.date || '', title: ai.title || 'Health record', documentType: ai.documentType || '',
-      madeBy: ai.madeBy || '', reportSays: ai.reportSays || '',
-      findings: Array.isArray(ai.findings) ? ai.findings : [],
-      doctor: ai.doctor || '', hospital: ai.hospital || '', diagnosis: ai.diagnosis || '', suggestions: ai.suggestions || '',
-      medicines: Array.isArray(ai.medicines) ? ai.medicines : [],
-      billAmount: ai.billAmount || '', tldr: ai.tldr || '',
-      files: [...new Set(idx)].map((i) => files[i]).filter(Boolean),
+      date: isoDate(ai.date) || '', title: str(ai.title) || 'Health record', documentType: str(ai.documentType),
+      madeBy: str(ai.madeBy), reportSays: str(ai.reportSays),
+      findings: arr(ai.findings),
+      doctor: str(ai.doctor), hospital: str(ai.hospital), diagnosis: str(ai.diagnosis), suggestions: str(ai.suggestions),
+      medicines: arr(ai.medicines),
+      billAmount: str(ai.billAmount), tldr: str(ai.tldr),
+      files: [...new Set(idx.map(Number))].map((i) => files[i]).filter(Boolean),
     };
   }
   function assignFiles(list, files) {
@@ -504,37 +511,92 @@
     if (orphans.length) list[0].files.push(...orphans);
   }
 
+  // Split files into requests that stay under Vercel's 4.5 MB body limit and a sane page count.
+  const MAX_BATCH_BYTES = 3.2e6;
+  const MAX_BATCH_FILES = 4;
+  async function makeBatches(files) {
+    const payload = await Promise.all(files.map(toApiFile));
+    const batches = [];
+    let cur = [], size = 0;
+    payload.forEach((p, i) => {
+      const b = p.data.length;
+      if (cur.length && (size + b > MAX_BATCH_BYTES || cur.length >= MAX_BATCH_FILES)) { batches.push(cur); cur = []; size = 0; }
+      cur.push({ file: files[i], api: p }); size += b;
+    });
+    if (cur.length) batches.push(cur);
+    return batches;
+  }
+
+  async function scanBatch(batch) {
+    const files = batch.map((x) => x.file);
+    const data = await api('/api/scan', { files: batch.map((x) => x.api) });
+    const list = (data.entries || []).map((e) => entryFromAI(e, files));
+    if (!list.length) throw new Error('The AI could not find a health record in these files.');
+    assignFiles(list, files);
+    return list;
+  }
+
+  // Read files with the AI. Groups up to 4 pages per request; if a group fails, retries each file alone.
+  // Returns records; files that still fail come back as one "not scanned yet" record so nothing is lost.
+  async function scanFiles(files, onProgress) {
+    const batches = await makeBatches(files);
+    const out = [];
+    const failed = [];
+    let lastErr = '';
+    let done = 0;
+    for (const batch of batches) {
+      onProgress?.(done, files.length);
+      try {
+        out.push(...await scanBatch(batch));
+      } catch (err) {
+        if (err.status === 401) throw err;
+        lastErr = err.message;
+        if (batch.length === 1) failed.push(batch[0].file);
+        else {
+          for (const one of batch) {
+            onProgress?.(done, files.length);
+            try { out.push(...await scanBatch([one])); }
+            catch (e) { if (e.status === 401) throw e; lastErr = e.message; failed.push(one.file); }
+            done++;
+          }
+          continue;
+        }
+      }
+      done += batch.length;
+    }
+    if (failed.length) {
+      out.push({ id: uid(), createdAt: new Date().toISOString(), scanned: false, date: new Date().toISOString().slice(0, 10), title: 'Uploaded — not scanned yet', files: failed, error: lastErr });
+    }
+    return out;
+  }
+
   async function scanPending() {
     if (!pending.length || !activeId) return;
     const btn = $('#scanBtn');
     const status = $('#scanStatus');
     const files = pending.slice();
     const patientId = activeId;
+    const who = pname(active());
     btn.disabled = true;
-    setStatus(status, spin(`Reading ${files.length} file${files.length > 1 ? 's' : ''} for ${pname(active())}… ~20 seconds`));
     try {
-      let list;
-      try {
-        const data = await api('/api/scan', { files: await Promise.all(files.map(toApiFile)) });
-        list = (data.entries || []).map((e) => entryFromAI(e, files));
-        if (!list.length) throw new Error('The AI could not find a health record in these files.');
-        assignFiles(list, files);
-      } catch (err) {
-        list = [{ id: uid(), createdAt: new Date().toISOString(), scanned: false, date: new Date().toISOString().slice(0, 10), title: 'Uploaded — not scanned yet', files, error: err.message }];
-      }
+      const list = await scanFiles(files, (d, n) => setStatus(status, spin(n > 1 ? `Reading files for ${who}… ${d}/${n} done` : `Reading the file for ${who}… ~20 seconds`)));
       setStatus(status, spin('Saving to your account…'));
       for (const e of list) await putEntry(e, patientId);
       pending = [];
       renderPending();
       await loadEntries();
-      if (list[0].scanned) {
-        setStatus(status, `Saved ${list.length} record${list.length > 1 ? 's' : ''} to ${esc(pname(active()))}’s history.`, 'ok');
-        location.hash = '#history/' + list[0].id;
+      const ok = list.filter((e) => e.scanned);
+      const bad = list.find((e) => !e.scanned);
+      if (ok.length && !bad) {
+        setStatus(status, `Saved ${ok.length} record${ok.length > 1 ? 's' : ''} to ${esc(who)}’s history.`, 'ok');
+        location.hash = '#history/' + ok[0].id;
+      } else if (ok.length) {
+        setStatus(status, `Saved ${ok.length} record${ok.length > 1 ? 's' : ''}. ${bad.files.length} file${bad.files.length > 1 ? 's' : ''} couldn’t be read — use “Retry scan” in History.`, 'error');
       } else {
-        setStatus(status, `AI scan failed: ${esc(list[0].error)}. Your files are saved — use “Retry scan” in History.`, 'error');
+        setStatus(status, `AI couldn’t read these files (${esc(bad.error)}). They’re saved — use “Retry scan” in History.`, 'error');
       }
     } catch (err) {
-      setStatus(status, esc(err.message), 'error');
+      setStatus(status, esc(err.status === 401 ? 'Session expired — please log in again.' : err.message), 'error');
     } finally { btn.disabled = false; }
   }
 
@@ -544,10 +606,8 @@
     btn.disabled = true;
     btn.innerHTML = spin('Scanning…');
     try {
-      const data = await api('/api/scan', { files: await Promise.all(old.files.map(toApiFile)) });
-      const list = (data.entries || []).map((e) => entryFromAI(e, old.files));
-      if (!list.length) throw new Error('No health record found');
-      assignFiles(list, old.files);
+      const list = await scanFiles(old.files, (d, n) => { btn.innerHTML = spin(n > 1 ? `Scanning ${d}/${n}…` : 'Scanning…'); });
+      if (!list.some((e) => e.scanned)) throw new Error(list[0]?.error || 'No health record found');
       for (const e of list) await putEntry(e, activeId);
       await delEntry(id, { keepFiles: true });
       await loadEntries();

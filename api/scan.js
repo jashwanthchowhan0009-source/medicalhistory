@@ -4,7 +4,7 @@
 
 import { askAI, readBody, send, requireUser } from './_ai.js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };
 
 const SYSTEM = `You read photos and PDFs of personal health documents (lab reports, prescriptions, doctor notes, discharge summaries, scan reports, pharmacy and hospital bills) for an app called Medical History.
 
@@ -19,8 +19,8 @@ Reply with ONLY a JSON object, no prose, in exactly this shape:
       "title": "Complete Blood Count",    // short name, e.g. "Thyroid Profile", "Prescription", "Pharmacy bill"
       "documentType": "Lab report",       // Lab report | Prescription | Doctor note | Discharge summary | Scan report | Bill | Other
       "madeBy": "",                       // lab / hospital / pharmacy that produced the document
-      "reportSays": "",                   // 2-4 sentences in very simple language a non-doctor understands: what was tested and what the results mean
-      "findings": [ { "name": "", "value": "", "unit": "", "range": "", "flag": "" } ],  // flag: "High", "Low" or "" (normal/unknown); include every measured value
+      "reportSays": "",                   // 2-3 short sentences in very simple language a non-doctor understands: what was tested and what the results mean
+      "findings": [ { "name": "", "value": "", "unit": "", "range": "", "flag": "" } ],  // flag: "High", "Low" or "" (normal/unknown); include every measured value, keep names short
       "doctor": "",                       // consulting doctor's name with title, e.g. "Dr. R. Kumar (General Physician)"
       "hospital": "",                     // clinic or hospital name
       "diagnosis": "",                    // only if written
@@ -54,10 +54,10 @@ export default async function handler(req, res) {
     });
     content.push({ type: 'text', text: 'Read all files above and return the JSON.' });
 
-    const out = await askAI({ system: SYSTEM, content, maxTokens: 8000 });
-    const entries = Array.isArray(out.entries) ? out.entries : [];
+    const out = await askAI({ system: SYSTEM, content, maxTokens: 32768 });
+    const entries = (Array.isArray(out.entries) ? out.entries : []).filter((e) => e && typeof e === 'object');
     return send(res, 200, { entries });
   } catch (err) {
-    return send(res, err.status || 500, { error: err.message || 'Scan failed' });
+    return send(res, err.status || 500, { error: err.message || 'Scan failed', code: err.code });
   }
 }
