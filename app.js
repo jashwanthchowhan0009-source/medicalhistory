@@ -848,7 +848,7 @@
       const dt = new Date(d + 'T00:00:00');
       const dateBlock = first
         ? (isNaN(dt) ? '<span class="r-md">No date</span>'
-          : `<span class="r-md">${MON[dt.getMonth()]} ${dt.getDate()},</span><span class="r-y">${dt.getFullYear()}</span><span class="r-wd">${WD[dt.getDay()]}</span>`)
+          : `<span class="r-cal"><span class="r-wd">${WD[dt.getDay()]}</span><span class="r-d">${dt.getDate()}</span><span class="r-m">${MON[dt.getMonth()]}</span></span><span class="r-y">${dt.getFullYear()}</span>`)
         : '';
       return `
       <li class="t-item k-${e.scanned ? kindOf(e) : 'other'}${first ? ' day-first' : ''}" id="rec-${e.id}">
