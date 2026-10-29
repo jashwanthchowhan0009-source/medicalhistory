@@ -90,7 +90,9 @@
 
   // ---------- Data layer ----------
   async function loadPatients() {
-    const { data, error } = await sb.from('hh_patients').select('id, data, aadhaar_last4, full_report, created_at').order('created_at');
+    // new columns come from migration 002; fall back gracefully if it hasn't been run yet
+    let { data, error } = await sb.from('hh_patients').select('id, data, aadhaar_last4, full_report, created_at, public_code, emergency_token, emergency_enabled, emergency_fields').order('created_at');
+    if (error) ({ data, error } = await sb.from('hh_patients').select('id, data, aadhaar_last4, full_report, created_at').order('created_at'));
     if (error) throw error;
     patients = data || [];
     const saved = store.get(ACTIVE_KEY);
@@ -205,12 +207,21 @@
   }
 
   // ---------- Routing ----------
-  const VIEWS = ['home', 'history', 'profile', 'patient'];
+  const VIEWS = ['home', 'history', 'profile', 'patient', 'doctor'];
   function showView(view) { $$('.view').forEach((v) => (v.hidden = v.dataset.view !== view)); }
 
   function route() {
     if (!user) { showView('auth'); return; }
     const [name, arg] = (location.hash || '#home').slice(1).split('/');
+    // Doctor tools work without a patient profile (a doctor may not add their own family).
+    if (name === 'doctor') {
+      document.body.classList.remove('onboarding');
+      showView('doctor');
+      $$('[data-nav]').forEach((a) => { a.classList.toggle('active', a.dataset.nav === 'doctor'); });
+      window.MHF?.renderDoctor?.(arg);
+      window.scrollTo(0, 0);
+      return;
+    }
     // A patient (with Aadhaar) is required before anything else.
     if (!patients.length) {
       document.body.classList.add('onboarding');
@@ -366,6 +377,7 @@
       ? 'Usually that’s you. You can add up to 5 more family members later. Aadhaar is required to create a Medical History account.'
       : `One account can hold up to ${MAX_PATIENTS} patients. Aadhaar is required for every patient.`;
     $('#patientCancel').hidden = onboarding;
+    $('#doctorSkip').hidden = !onboarding;
     $('#patientDelete').hidden = !p;
     setStatus($('#patientStatus'), '');
   }
@@ -438,11 +450,11 @@
       img.src = src;
     });
   }
-  async function compressImage(file) {
+  async function compressImage(file, maxSide = MAX_SIDE) {
     const url = URL.createObjectURL(file);
     try {
       const img = await loadImage(url);
-      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
       const w = Math.round(img.naturalWidth * scale);
       const h = Math.round(img.naturalHeight * scale);
       const c = document.createElement('canvas');
@@ -744,6 +756,7 @@
   // ---------- Home ----------
   function renderHome() {
     paintPatientSwitch();
+    window.MHF?.afterHome?.();
     const recent = entries.slice(0, 3);
     $('#recentWrap').hidden = !recent.length;
     $('#recentList').innerHTML = recent.map((e) => `
@@ -956,8 +969,8 @@
           ${e.suggestions ? `<h4 class="c-h">Doctor’s advice</h4><p class="c-text">${esc(e.suggestions)}</p>` : ''}
           ${meds.length ? `<h4 class="c-h">Medicines</h4>
           <p class="med-warn">Read by AI${k === 'rx' || k === 'doctor' ? ' from handwriting' : ''}. Always match name and dose with the original prescription before taking.</p>
-          <ul class="meds">${meds.map((m) => `
-            <li class="${m.unclear ? 'unclear' : ''}"><span class="pill">${icon('rx', 14)}</span><div><strong>${esc(m.name)}${m.unclear ? ' <b class="chk">Check</b>' : ''}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
+          <ul class="meds">${meds.map((m, mi) => `
+            <li class="${m.unclear ? 'unclear' : ''}"><button type="button" class="pill pill-btn${m.photo ? ' has-photo' : ''}" data-medpic="${e.id}" data-medi="${mi}" aria-label="Tablet picture for ${esc(m.name)}">${icon('rx', 14)}</button><div class="med-main"><strong>${esc(m.name)}${m.unclear ? ' <b class="chk">Check</b>' : ''}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div><button type="button" class="add-daily" data-adddaily="${e.id}" data-medi="${mi}" title="Add to Daily Tablets">+ Daily</button></li>`).join('')}
           </ul>
           ${(e.files || []).length ? `<button type="button" class="link-btn" data-sources="${e.id}">View original prescription</button>` : ''}` : ''}
           ${e.billAmount ? `<p class="c-bill">Bill amount <strong>${esc(e.billAmount)}</strong></p>` : ''}
@@ -1005,6 +1018,7 @@
         ${cardHTML(e)}
       </li>`;
     }).join('');
+    window.MHF?.afterHistory?.();
   }
 
   // ---------- Document scanner ----------
@@ -1231,6 +1245,7 @@
     renderFullReport(p?.full_report || null);
     $('#genReportBtn').textContent = p?.full_report ? 'Regenerate' : 'Generate with AI';
     setStatus($('#genStatus'), '');
+    window.MHF?.afterProfile?.();
   }
 
   function list(items) {
@@ -1346,6 +1361,10 @@
     $('#timeline').addEventListener('click', async (e) => {
       const t = e.target.closest('[data-tldr]');
       if (t) return toggleTldr(t);
+      const mp = e.target.closest('[data-medpic]');
+      if (mp) return window.MHF?.medPicture?.(mp.dataset.medpic, +mp.dataset.medi);
+      const ad = e.target.closest('[data-adddaily]');
+      if (ad) return window.MHF?.addDailyFromRecord?.(ad.dataset.adddaily, +ad.dataset.medi);
       const pd = e.target.closest('[data-pdf]');
       if (pd) { pd.closest('details')?.removeAttribute('open'); return downloadPdf(pd.dataset.pdf); }
       const fx = e.target.closest('[data-fixdate]');
@@ -1410,6 +1429,17 @@
     window.addEventListener('hashchange', () => document.body.classList.remove('chrome-hidden'));
     document.addEventListener('focusin', (e) => { if (e.target.closest('.topbar, .nav-mobile')) document.body.classList.remove('chrome-hidden'); });
   }
+
+  // ---------- shared with features.js ----------
+  window.MHApp = {
+    get sb() { return sb; }, get user() { return user; }, get patients() { return patients; },
+    get activeId() { return activeId; }, get entries() { return entries; },
+    active, pname, esc, spin, setStatus, fmtDate, fmtTime, isoDate, uid, api, todayISO, ageOf,
+    compressImage, blobToDataURL, fileAsDataURL, dataUrlToBlob, BUCKET,
+    loadPatients, loadEntries, renderHistory, renderProfile, route, paintPatientSwitch, validAadhaar, fmtAadhaarInput,
+    render: { testsTable, vitalsChips, bulletList, splitList, kindOf, icon, flagClass },
+    async refreshPatients() { await loadPatients(); paintPatientSwitch(); },
+  };
 
   // ---------- Boot ----------
   (async function init() {

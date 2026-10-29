@@ -33,6 +33,7 @@
         <a href="#home" data-nav="home">Home</a>
         <a href="#history" data-nav="history">History</a>
         <a href="#profile" data-nav="profile">Profile</a>
+        <a href="#doctor" data-nav="doctor" id="navDoctor" hidden>Doctor</a>
       </nav>
 
       <div class="top-actions">
@@ -88,6 +89,7 @@
       <div class="container narrow">
         <p class="eyebrow" id="pEyebrow">Patient</p>
         <h1 id="pTitle">Add a patient</h1>
+        <p class="doctor-skip" id="doctorSkip" hidden>Are you a doctor? <a href="#doctor">Open doctor tools</a></p>
         <p class="lead" id="pLead">Add up to 6 family members to one account. Aadhaar is required for every patient.</p>
 
         <form id="patientForm" class="panel form-grid" novalidate>
@@ -103,6 +105,12 @@
             <label for="pt-aadhaar">Aadhaar number <span class="req">*</span></label>
             <input id="pt-aadhaar" name="aadhaar" type="text" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012" maxlength="14">
             <p class="hint" id="aadhaarHint">12 digits. For your privacy only the last 4 digits are stored.</p>
+            <button type="button" class="btn btn-outline btn-sm aad-scan" id="aadhaarScanBtn">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              Scan Aadhaar to fill
+            </button>
+            <input class="sr-only" type="file" id="aadhaarScanInput" accept="image/*" capture="environment">
+            <p class="hint">Read on your phone only — the Aadhaar photo is never uploaded or saved.</p>
           </div>
 
           <div class="field"><label for="pt-sex">Sex <span class="req">*</span></label>
@@ -189,6 +197,8 @@
           <p class="status" id="scanStatus" role="status" aria-live="polite"></p>
         </div>
 
+        <div id="homeTools"></div>
+
         <ol class="steps" aria-label="How it works">
           <li><span class="step-n">1</span><div><strong>Upload</strong><p>Photos or PDFs of lab reports, prescriptions, discharge summaries and bills.</p></div></li>
           <li><span class="step-n">2</span><div><strong>AI reads it</strong><p>Who made the report, what it says in simple words, which doctor you saw and what they prescribed.</p></div></li>
@@ -225,6 +235,7 @@
           </div>
           </div>
         </div>
+        <div id="pidBar"></div>
         <ol class="timeline" id="timeline"></ol>
         <div class="empty" id="historyEmpty" hidden>
           <img class="mark" src="assets/logo-mark-green.png" alt="" width="56" height="56">
@@ -268,6 +279,8 @@
           </dl>
         </section>
 
+        <div id="profileExtras"></div>
+
         <section class="panel" aria-labelledby="fullTitle">
           <div class="section-head">
             <h2 class="h3" id="fullTitle">Complete health report</h2>
@@ -288,6 +301,10 @@
           </div>
         </section>
       </div>
+    </section>
+    <!-- ============ DOCTOR ============ -->
+    <section class="view" id="view-doctor" data-view="doctor" aria-labelledby="doctorTitle" hidden>
+      <div class="container narrow" id="doctorRoot"></div>
     </section>
   </main>
 
@@ -389,6 +406,16 @@
     </div>
   </dialog>
 
+  <dialog id="mhDialog" class="dialog" aria-labelledby="mhDlgTitle">
+    <div class="dialog-head">
+      <h2 class="h3" id="mhDlgTitle"></h2>
+      <button class="icon-btn" type="button" data-mh-close aria-label="Close">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog-body" id="mhDlgBody"></div>
+  </dialog>
+
   <dialog id="vitalsDialog" class="dialog dialog-sm" aria-labelledby="vitalsTitle">
     <form id="vitalsForm" method="dialog" novalidate>
       <div class="dialog-head">
@@ -432,6 +459,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
   <script src="config.js"></script>
   <script src="scanner.js"></script>
+  <script src="features.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

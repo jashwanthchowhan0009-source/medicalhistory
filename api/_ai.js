@@ -45,6 +45,39 @@ export async function askAI({ system, content, maxTokens = 8192 }) {
   }
 }
 
+// Plain-text answer grounded in Google Search. Returns { text, sources: [{ title, url }] }.
+export async function askAIWeb({ system, content, maxTokens = 2048 }) {
+  const key = process.env.API_KEYS_FOR_MEDH || process.env.GEMINI_API_KEY;
+  if (!key) throw Object.assign(new Error('Server is missing API_KEYS_FOR_MEDH.'), { status: 500 });
+  const parts = content.map((c) => (c.type === 'text' ? { text: c.text } : { inline_data: { mime_type: c.source.media_type, data: c.source.data } }));
+  const call = (withSearch) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts }],
+      ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
+      generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 1024 } },
+    }),
+  });
+  let res = await call(true);
+  if (res.status === 400) res = await call(false);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw Object.assign(new Error(res.status === 429 ? 'AI is busy (rate limit). Try again in a minute.' : data?.error?.message || `AI error (${res.status})`), { status: 502 });
+  }
+  const cand = data.candidates?.[0] || {};
+  const text = (cand.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('').trim();
+  const seen = new Set();
+  const sources = [];
+  for (const ch of cand.groundingMetadata?.groundingChunks || []) {
+    const url = ch.web?.uri, title = ch.web?.title || ch.web?.domain || '';
+    if (url && !seen.has(url)) { seen.add(url); sources.push({ title: title || url, url }); }
+  }
+  if (!text) throw Object.assign(new Error('No answer found. Try asking differently.'), { status: 502 });
+  return { text, sources: sources.slice(0, 6) };
+}
+
 export function parseJSON(text) {
   const cleaned = String(text).replace(/```(?:json)?/gi, '').trim();
   const start = cleaned.indexOf('{');

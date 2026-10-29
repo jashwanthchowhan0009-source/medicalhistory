@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#D93025">
+  <title>Medical Emergency · Medical History</title>
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { padding: 0; }
+    .em-page { max-width: 560px; margin: 0 auto; padding: 0 12px 40px; }
+    .em-banner { margin: 0 -12px 16px; padding: 18px 16px; background: #D93025; color: #fff; text-align: center; }
+    .em-banner h1 { margin: 0; color: #fff; font-size: 24px; letter-spacing: .02em; }
+    .em-banner p { margin: 4px 0 0; font-size: 14px; opacity: .95; }
+    .em-call { display: flex; gap: 10px; margin: 0 0 16px; }
+    .em-call a { flex: 1; }
+    .em-call .btn-primary { background: #D93025; color: #fff; }
+    .em-card ul.bullets { margin-top: -6px; }
+    .em-foot { text-align: center; margin-top: 18px; }
+    .em-foot img { width: 36px; height: 36px; border-radius: 8px; margin: 0 auto 6px; }
+  </style>
+</head>
+<body>
+  <main class="em-page">
+    <div class="em-banner"><h1>MEDICAL EMERGENCY</h1><p>Information shared by the patient for emergencies</p></div>
+    <div class="em-call">
+      <a class="btn btn-primary" href="tel:108">📞 Call 108 Ambulance</a>
+      <a class="btn btn-outline" href="tel:112">112</a>
+    </div>
+    <div id="em"><p class="muted"><span class="spinner"></span>Loading…</p></div>
+    <p class="hint">Verified doctors: open Medical History → Doctor tools → General checkup for the full history (needs the patient’s or family’s code). Every view of this page is shown to the patient.</p>
+    <div class="em-foot"><img src="/assets/logo-primary.png" alt=""><p class="muted">Medical History · mymedicalhistory.vercel.app</p></div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/config.js"></script>
+  <script>
+    (async () => {
+      const box = document.getElementById('em');
+      const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const token = (location.pathname.match(/\/e\/([a-f0-9]{32,80})/i) || [])[1] || new URLSearchParams(location.search).get('t');
+      if (!token) { box.innerHTML = '<p class="status error">This link is not complete.</p>'; return; }
+      try {
+        const sb = window.supabase.createClient(window.HH_CONFIG.supabaseUrl, window.HH_CONFIG.supabaseKey);
+        const { data: v, error } = await sb.rpc('get_emergency', { p_token: token });
+        if (error) throw error;
+        if (!v) { box.innerHTML = '<p class="status error">This emergency card is turned off or was replaced by the patient.</p>'; return; }
+        const phone = String(v.emergency || '').replace(/[^\d+]/g, '');
+        box.innerHTML = `
+          <div class="em-card">
+            <div class="em-top"><strong>${esc(v.name || 'Patient')}</strong><span>${esc([v.age != null && v.age !== '' && `${v.age} yrs`, v.sex].filter(Boolean).join(' · '))}</span></div>
+            ${v.blood ? `<div class="em-blood"><span>Blood group</span><strong>${esc(v.blood)}</strong></div>` : ''}
+            ${v.allergies ? `<p class="em-alert">⚠ Allergies: ${esc(v.allergies)}</p>` : ''}
+            ${v.conditions ? `<p><strong>Conditions:</strong> ${esc(v.conditions)}</p>` : ''}
+            ${(v.tablets || []).length ? `<p><strong>Daily tablets:</strong></p><ul class="bullets">${v.tablets.map((t) => `<li>${esc(t.name)}${t.dose ? ' · ' + esc(t.dose) : ''}${(t.slots || []).length ? ' · ' + esc(t.slots.join(' ')) : ''}</li>`).join('')}</ul>` : ''}
+            ${v.emergency ? `<p class="em-ice"><strong>Family / emergency contact:</strong> ${esc(v.emergency)} ${phone.replace(/\D/g, '').length >= 10 ? `<a class="btn btn-primary btn-sm" href="tel:${esc(phone)}">Call</a>` : ''}</p>` : ''}
+            <p class="muted">Patient ID ${esc(v.public_code || '')}</p>
+          </div>`;
+      } catch (err) {
+        box.innerHTML = `<p class="status error">Could not load: ${esc(err.message)}. Check the internet connection.</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

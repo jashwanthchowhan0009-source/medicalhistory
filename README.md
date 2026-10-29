@@ -17,6 +17,15 @@ Green, white & black, classic and minimal, light + dark mode, works on mobile an
 
 Patient switcher in the top bar changes whose records you’re viewing.
 
+### Family, doctors & tablets
+- **Patient ID** (`MH-XXXX-XXXX`) on top of History. **Share with doctor** makes a one-time 6-digit code (10 min). A *verified* doctor enters ID + code → 24 h read-only access. Patient sees every access and can stop it.
+- **Emergency card**: QR on a lock-screen wallpaper / wallet card → `/e/<secret>` shows only what the patient ticks (blood group, allergies, conditions, daily tablets, family contact). Every scan is logged. No face data is stored.
+- **Doctor tools** (`#doctor`): register with council registration no. + certificate → admin approves → Emergency (scan QR) and General checkup (ID + code).
+- **Daily Tablets** per patient: M / A / E / N, BF / AF, reminders (app notifications + phone-calendar `.ics`). Add from a prescription (“+ Daily”) or by scanning a tablet.
+- **Tablet pictures**: tap the pill icon on any medicine to add a strip photo or see Google images.
+- **Health & insurance cards**: upload a photo, AI fills the details. **Aadhaar is read on the phone only** (never uploaded); only the last 4 digits are stored.
+- **Scan a tablet** + **Look it up** box on Home: web-sourced information with links, never personal advice.
+
 ## Stack
 
 ```
@@ -26,7 +35,7 @@ Browser (index.html + app.js + config.js)         Vercel serverless (api/)
   └─ Storage: hh-reports (private, per-user)       both require a logged-in user
 ```
 
-Schema: `supabase/schema.sql`. Each user can only read/write their own patients, records and files.
+Schema: `supabase/schema.sql`, then `supabase/002_family_doctor_emergency.sql` (run both in the SQL Editor). Admin emails live in `hh_admins`. Each user can only read/write their own patients, records and files.
 
 ## Deploy
 
