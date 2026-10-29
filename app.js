@@ -317,7 +317,7 @@
   // ---------- Patient switcher ----------
   function paintPatientSwitch() {
     const sel = $('#patientSelect');
-    sel.innerHTML = patients.map((p) => `<option value="${p.id}">${esc(pname(p))}${p.data?.relation && p.data.relation !== 'Self' ? ` (${esc(p.data.relation)})` : ''}</option>`).join('')
+    sel.innerHTML = patients.map((p) => `<option value="${p.id}">${esc(pname(p))}</option>`).join('')
       + (patients.length < MAX_PATIENTS ? '<option value="__add">+ Add patient</option>' : '');
     if (activeId) sel.value = activeId;
     $$('#homePatient, #historyPatient').forEach((el) => { el.textContent = pname(active()); });
@@ -647,65 +647,65 @@
     if (!e.scanned) {
       return `
       <article class="t-card unscanned">
-        <p class="label-row"><span class="k">${esc(e.title)}</span></p>
-        <p class="muted">${esc(e.error ? 'Last attempt: ' + e.error : 'These files are stored but haven’t been read by the AI.')}</p>
+        <header class="c-head"><h3 class="c-name">${esc(e.title)}</h3></header>
+        <p class="c-text muted">${esc(e.error ? 'Last attempt: ' + e.error : 'These files are stored but haven’t been read by the AI.')}</p>
         <div class="card-actions">
           <button class="btn btn-primary btn-sm" type="button" data-retry="${e.id}">Retry scan</button>
           <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">Sources (${nFiles})</button>
-          <span class="spacer"></span>
-          <button class="link-btn" type="button" data-delete="${e.id}">Delete</button>
+          <button class="link-btn danger" type="button" data-delete="${e.id}">Delete</button>
         </div>
       </article>`;
     }
     const findings = (e.findings || []).filter((f) => f && f.name);
     const meds = (e.medicines || []).filter((m) => m && m.name);
     const hasDoctor = e.doctor || e.hospital || e.suggestions || meds.length || e.diagnosis;
+    // abnormal values first; keep the card short by folding extra normal ones
+    const sorted = [...findings.filter((f) => flagClass(f.flag)), ...findings.filter((f) => !flagClass(f.flag))];
+    const SHOW = 5;
+    const hiddenCount = Math.max(0, sorted.length - SHOW);
+    const pillIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M12 8v8"/></svg>';
     return `
       <article class="t-card">
-        ${e.tldr ? `<div class="tldr"><span class="tldr-k">TL;DR</span><p>${esc(e.tldr)}</p></div>` : ''}
-        <p class="label-row">
-          <span class="k">${esc(e.title)}</span>
-          ${e.madeBy ? `<span class="sep">|</span><span class="v">Made by ${esc(e.madeBy)}</span>` : ''}
+        <header class="c-head">
+          <h3 class="c-name">${esc(e.title)}</h3>
           ${e.documentType ? `<span class="tag">${esc(e.documentType)}</span>` : ''}
-        </p>
+          ${e.madeBy ? `<p class="c-meta">Made by ${esc(e.madeBy)}</p>` : ''}
+        </header>
+        ${e.tldr ? `<p class="tldr"><span class="tldr-k">TL;DR</span>${esc(e.tldr)}</p>` : ''}
         ${(e.reportSays || findings.length) ? `
-        <div class="block">
-          <p class="block-title">What the report says</p>
-          ${e.reportSays ? `<p>${esc(e.reportSays)}</p>` : ''}
-          ${findings.length ? `
-          <div class="findings-wrap"><table class="findings">
-            <thead><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Normal range</th></tr></thead>
-            <tbody>${findings.map((f) => `
-              <tr><td>${esc(f.name)}</td>
-              <td class="${flagClass(f.flag)}">${esc(f.value)} ${esc(f.unit || '')}${flagClass(f.flag) ? ` (${esc(f.flag)})` : ''}</td>
-              <td>${esc(f.range || '—')}</td></tr>`).join('')}
-            </tbody></table></div>` : ''}
-        </div>` : ''}
+        <section class="c-sec">
+          <h4 class="c-label">What the report says</h4>
+          ${e.reportSays ? `<p class="c-text">${esc(e.reportSays)}</p>` : ''}
+          ${sorted.length ? `
+          <ul class="tests">${sorted.map((f, i) => {
+            const fc = flagClass(f.flag);
+            return `
+            <li class="test${fc ? ' ' + fc : ''}${i >= SHOW ? ' extra' : ''}">
+              <span class="test-name">${esc(f.name)}${f.range ? `<small>Normal ${esc(f.range)}</small>` : ''}</span>
+              <span class="test-val">${esc(f.value)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ''}${fc ? `<b class="flag-badge">${fc === 'flag-high' ? 'High' : 'Low'}</b>` : ''}</span>
+            </li>`;
+          }).join('')}
+          </ul>
+          ${hiddenCount ? `<button class="link-btn more-btn" type="button" data-more><span class="when-closed">Show ${hiddenCount} more normal result${hiddenCount > 1 ? 's' : ''}</span><span class="when-open">Show less</span></button>` : ''}` : ''}
+        </section>` : ''}
         ${hasDoctor ? `
-        <p class="label-row">
-          <span class="k">Consulted doctor</span>
-          ${e.doctor ? `<span class="sep">|</span><span class="v">${esc(e.doctor)}</span>` : ''}
-          ${e.hospital ? `<span class="sep">|</span><span class="v">${esc(e.hospital)}</span>` : ''}
-        </p>
-        <div class="block">
-          <p class="block-title">What the doctor suggested</p>
-          ${e.diagnosis ? `<p><strong>Diagnosis:</strong> ${esc(e.diagnosis)}</p>` : ''}
-          ${e.suggestions ? `<p>${esc(e.suggestions)}</p>` : (!meds.length && !e.diagnosis ? '<p class="muted">No advice written on this document.</p>' : '')}
+        <section class="c-sec">
+          <h4 class="c-label">Consulted doctor</h4>
+          ${(e.doctor || e.hospital) ? `<p class="c-doc"><strong>${esc(e.doctor || 'Doctor')}</strong>${e.hospital ? `<span>${esc(e.hospital)}</span>` : ''}</p>` : ''}
+          ${e.diagnosis ? `<p class="c-text"><strong>Diagnosis:</strong> ${esc(e.diagnosis)}</p>` : ''}
+          ${e.suggestions ? `<p class="c-text"><strong>Advice:</strong> ${esc(e.suggestions)}</p>` : ''}
           ${meds.length ? `
-          <p class="block-title" style="margin-top:10px">Tablets / medicines given</p>
           <ul class="meds">${meds.map((m) => `
-            <li><span class="pill" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M12 8v8"/></svg></span>
-            <div><strong>${esc(m.name)}</strong><span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span></div></li>`).join('')}
+            <li><span class="pill">${pillIcon}</span><div><strong>${esc(m.name)}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
           </ul>` : ''}
-        </div>` : ''}
-        ${e.billAmount ? `<p class="muted">Bill amount: <strong style="color:var(--ink)">${esc(e.billAmount)}</strong></p>` : ''}
+        </section>` : ''}
+        ${e.billAmount ? `<p class="c-bill">Bill amount <strong>${esc(e.billAmount)}</strong></p>` : ''}
         <div class="card-actions">
           <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
             Sources (${nFiles})
           </button>
-          <span class="spacer"></span>
-          <button class="link-btn" type="button" data-delete="${e.id}">Delete</button>
+          <button class="link-btn danger" type="button" data-delete="${e.id}">Delete</button>
         </div>
       </article>`;
   }
@@ -911,6 +911,8 @@
 
     $('#searchInput').addEventListener('input', renderHistory);
     $('#timeline').addEventListener('click', async (e) => {
+      const m = e.target.closest('[data-more]');
+      if (m) return m.closest('.t-card').classList.toggle('show-all');
       const s = e.target.closest('[data-sources]');
       if (s) return openSources(s.dataset.sources);
       const r = e.target.closest('[data-retry]');
@@ -934,6 +936,23 @@
     $('#exportBtn').addEventListener('click', () => exportBackup().catch((err) => alert('Export failed: ' + err.message)));
   }
 
+  // ---------- Auto-hide header & bottom nav on scroll ----------
+  function autoHideChrome() {
+    let lastY = window.scrollY, ticking = false;
+    const update = () => {
+      const y = window.scrollY;
+      const nearBottom = window.innerHeight + y >= document.documentElement.scrollHeight - 40;
+      if (y < 60 || nearBottom) document.body.classList.remove('chrome-hidden');
+      else if (y > lastY + 6) document.body.classList.add('chrome-hidden');
+      else if (y < lastY - 6) document.body.classList.remove('chrome-hidden');
+      if (Math.abs(y - lastY) > 6) lastY = y;
+      ticking = false;
+    };
+    window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    window.addEventListener('hashchange', () => document.body.classList.remove('chrome-hidden'));
+    document.addEventListener('focusin', (e) => { if (e.target.closest('.topbar, .nav-mobile')) document.body.classList.remove('chrome-hidden'); });
+  }
+
   // ---------- Boot ----------
   (async function init() {
     if (!sb) {
@@ -944,6 +963,7 @@
       return;
     }
     bind();
+    autoHideChrome();
     paintThemeBtn();
     setAuthMode('login');
     sb.auth.onAuthStateChange((event, s) => {

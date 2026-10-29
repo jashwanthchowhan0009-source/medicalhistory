@@ -323,3 +323,108 @@ main { outline: none; }
   .view:not(#view-profile) { display: none !important; }
   .panel.print-me { border: 0; padding: 0; }
 }
+
+/* ================= Compact report card ================= */
+.c-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; }
+.c-name { font-size: 17px; line-height: 1.25; margin: 0; }
+.c-meta { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); }
+.tldr { display: block; margin: 0 0 12px; padding: 10px 12px; border: 1.5px solid var(--ink); border-radius: var(--radius); font-size: 14px; font-weight: 500; line-height: 1.45; }
+.tldr .tldr-k { display: inline-block; margin-right: 8px; padding: 0 6px; font: 700 11px/18px var(--sans); letter-spacing: .04em; border: 1.5px solid var(--ink); border-radius: 4px; vertical-align: 1px; }
+.c-sec { padding: 12px 0 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
+.c-label { margin: 0 0 6px; font: 700 11px var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.c-text { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.c-doc { margin: 0 0 8px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.c-doc span { color: var(--muted); font-size: 13px; }
+.c-bill { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.c-bill strong { color: var(--ink); margin-left: 4px; }
+
+.tests { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.test { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 10px; font-size: 13.5px; border-top: 1px solid var(--line); background: var(--surface); }
+.test:first-child { border-top: 0; }
+.test-name { min-width: 0; line-height: 1.3; }
+.test-name small { display: block; font-size: 11.5px; color: var(--muted); }
+.test-val { flex: none; text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.test-val small { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+.test.flag-high, .test.flag-low { font-weight: 400; }
+.test.flag-high { background: var(--danger-bg); }
+.test.flag-low { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+.test.flag-high .test-val { color: var(--danger); }
+.test.flag-low .test-val { color: var(--warn); }
+.flag-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font: 700 10.5px/16px var(--sans); text-transform: uppercase; letter-spacing: .03em; color: #fff; background: var(--danger); vertical-align: 1px; }
+.flag-low .flag-badge { background: var(--warn); }
+:root[data-theme="dark"] .flag-badge { color: #111; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .flag-badge { color: #111; } }
+.test.extra { display: none; }
+.show-all .test.extra { display: flex; }
+.more-btn { min-height: 36px; padding: 6px 0; font-size: 13px; }
+.more-btn .when-open, .show-all .more-btn .when-closed { display: none; }
+.show-all .more-btn .when-open { display: inline; }
+
+.meds { margin-top: 6px; gap: 6px; }
+.meds li { padding: 8px 10px; font-size: 13.5px; align-items: center; }
+.meds .pill { width: 24px; height: 24px; }
+.meds strong { font-size: 14px; line-height: 1.3; }
+.meds span { display: block; font-size: 12.5px; line-height: 1.35; }
+
+.card-actions { margin-top: 14px; flex-wrap: nowrap; justify-content: space-between; }
+
+/* ================= Auto-hide header & bottom nav ================= */
+.topbar, .nav-mobile { transition: transform .25s ease, opacity .25s ease; will-change: transform; }
+@media (max-width: 767px) {
+  body.chrome-hidden .topbar { transform: translateY(-100%); }
+  body.chrome-hidden .nav-mobile { transform: translate(-50%, calc(100% + 28px)); opacity: 0; pointer-events: none; }
+}
+@media (prefers-reduced-motion: reduce) { .topbar, .nav-mobile { transition: none; } }
+
+/* ================= Mobile: smaller type, tighter layout ================= */
+@media (max-width: 600px) {
+  body { font-size: 15px; line-height: 1.5; }
+  .container { padding: 0 14px; }
+  .view { padding: 20px 0 28px; }
+  h1 { font-size: 25px; margin-bottom: 8px; }
+  h2 { font-size: 19px; }
+  .h3 { font-size: 17px; }
+  .lead { font-size: 15px; }
+  .eyebrow { font-size: 11px; }
+  .muted { font-size: 13px; }
+
+  .topbar-inner { height: 54px; gap: 8px; padding: 0 10px; }
+  .brand-logo { width: 32px; height: 32px; }
+  .patient-switch select { min-height: 36px; font-size: 13px; max-width: 52vw; padding-left: 10px; }
+  .icon-btn { width: 36px; height: 36px; }
+  .avatar { width: 36px; height: 36px; font-size: 15px; }
+  .avatar-lg { width: 56px; height: 56px; font-size: 24px; }
+
+  .nav-mobile a { min-height: 40px; padding: 0 16px; font-size: 14px; }
+
+  /* timeline: slimmer rail, date as a small label above the card */
+  .page-head { margin-bottom: 18px; gap: 12px; }
+  .search { max-width: none; }
+  .search input { min-height: 40px; font-size: 14px; }
+  .t-item { padding-left: 20px; padding-bottom: 20px; gap: 6px; }
+  .t-item::before { left: 5px; top: 6px; }
+  .t-dot { width: 12px; height: 12px; top: 3px; border-width: 2px; }
+  .t-dot::after { inset: 2px; }
+  .t-date { font-size: 13px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .t-date small { display: inline; font-size: 12px; }
+  .t-date small::before { content: "· "; }
+  .t-card { padding: 14px; border-radius: 12px; }
+  .c-name { font-size: 16px; }
+
+  /* home & forms */
+  .dropzone { margin: 18px 0 16px; padding: 24px 14px; }
+  .dz-icon { width: 52px; height: 52px; }
+  .dz-title { font-size: 20px; }
+  .steps li { padding: 12px; }
+  .steps p { font-size: 13px; }
+  .panel { padding: 16px; border-radius: 12px; }
+  .field label { font-size: 13px; }
+  .field input, .field select { min-height: 42px; font-size: 15px; }
+  .details { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+  .details dd { font-size: 14px; }
+  .stats dd { font-size: 17px; }
+  .auth-card { padding: 22px 18px; }
+  .auth-logo { width: 64px; height: 64px; margin-bottom: 12px; }
+  .auth-card h1 { font-size: 24px; }
+  .footer { padding: 16px 14px 24px; font-size: 12px; }
+}
