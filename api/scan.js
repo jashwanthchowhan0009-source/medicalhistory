@@ -10,6 +10,14 @@ const SYSTEM = `You read photos and PDFs of personal health documents (lab repor
 
 The user may upload several documents in ANY order, possibly from different visits. Group pages that belong to the same visit/report together, and create one record per visit/report. Read every word, including handwriting, as carefully as you can. Never invent values: if something is not written, leave it as an empty string or empty list.
 
+ACCURACY RULES — people will rely on this for their health, mistakes can hurt them:
+- Dates: these are Indian documents, written DAY/MONTH/YEAR (e.g. 07/04/26 = 7 April 2026). Never swap day and month. Never guess a missing or unreadable year — leave "date" as "" instead. Today is {{TODAY}}; a report cannot be from the future, so if what you read is after today, you misread it: leave "" and add "date" to needsReview.
+- Medicines: copy the drug name, strength (mg/ml), dose and frequency EXACTLY as written. Never "correct" or guess a dose, strength or frequency. If any part of a medicine is hard to read (handwriting), still write your best reading but set "unclear": true on that medicine.
+- Numbers in lab results: copy exactly with the same decimals and units; do not round or convert.
+- If you are not sure about any field, add its name to "needsReview" (e.g. "date", "medicines", "doctor", "findings").
+- "doctor" = only the ONE consulting / prescribing doctor, short: "Dr. Name (Speciality)". Do not list degrees. On lab reports, do NOT put pathologists or lab signatories here (leave "" unless a referring doctor is named).
+- "diagnosis" = only conditions the doctor actually diagnosed. Things like "no chest pain" or "no fever" are not diagnoses — leave them out.
+
 Reply with ONLY a JSON object, no prose, in exactly this shape:
 {
   "entries": [
@@ -28,13 +36,36 @@ Reply with ONLY a JSON object, no prose, in exactly this shape:
       "hospital": "",                     // clinic or hospital name
       "diagnosis": "",                    // only if written; separate multiple with ", "
       "suggestions": "",                  // doctor's advice in simple words: diet, rest, follow-up, further tests
-      "medicines": [ { "name": "", "dose": "", "frequency": "", "duration": "" } ],  // tablets / syrups / injections prescribed or billed; frequency like "1-0-1 after food"
-      "billAmount": ""                    // total with currency if this is a bill, e.g. "₹1,250"
+      "medicines": [ { "name": "", "dose": "", "frequency": "", "duration": "", "unclear": false } ],  // tablets / syrups / injections prescribed or billed, exactly as written; frequency like "1-0-1 after food"; unclear = true if any part was hard to read
+      "billAmount": "",                   // total with currency if this is a bill, e.g. "₹1,250"
+      "needsReview": []                   // names of fields you are not fully sure about
     }
   ]
 }
 
 The // notes above explain each field; do not include comments in your JSON. If a file is not a health document at all, leave it out. Keep the language neutral and factual; do not give a medical diagnosis of your own.`;
+
+// Server-side safety checks: never trust an impossible date, always flag shaky readings.
+function checkEntry(e, today) {
+  const review = new Set(Array.isArray(e.needsReview) ? e.needsReview.map(String) : []);
+  const d = String(e.date || '');
+  if (d) {
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(new Date(d + 'T00:00:00'));
+    const tooNew = d > addDays(today, 1);
+    const tooOld = d < '1950-01-01';
+    if (!ok || tooNew || tooOld) { e.dateRead = d; e.date = ''; review.add('date'); }
+  }
+  if (Array.isArray(e.medicines)) {
+    e.medicines = e.medicines.filter((m) => m && m.name);
+    if (e.medicines.some((m) => m.unclear)) review.add('medicines');
+  }
+  e.needsReview = [...review];
+  return e;
+}
+function addDays(iso, n) {
+  const t = new Date(iso + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST' });
@@ -56,8 +87,9 @@ export default async function handler(req, res) {
     });
     content.push({ type: 'text', text: 'Read all files above and return the JSON.' });
 
-    const out = await askAI({ system: SYSTEM, content, maxTokens: 32768 });
-    const entries = (Array.isArray(out.entries) ? out.entries : []).filter((e) => e && typeof e === 'object');
+    const today = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10); // India date
+    const out = await askAI({ system: SYSTEM.replace('{{TODAY}}', today), content, maxTokens: 32768 });
+    const entries = (Array.isArray(out.entries) ? out.entries : []).filter((e) => e && typeof e === 'object').map((e) => checkEntry(e, today));
     return send(res, 200, { entries });
   } catch (err) {
     return send(res, err.status || 500, { error: err.message || 'Scan failed', code: err.code });

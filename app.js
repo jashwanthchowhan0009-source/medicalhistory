@@ -119,7 +119,12 @@
     if (error) throw error;
   }
 
-  const sortKey = (e) => `${e.date || (e.createdAt || '').slice(0, 10)} ${e.time || '00:00'} ${e.createdAt || ''}`;
+  // a future date is a misread — sort such records by upload date instead so they don't sit on top
+  const sortKey = (e) => {
+    const up = (e.createdAt || '').slice(0, 10);
+    const d = e.date && (!up || e.date <= up) ? e.date : up;
+    return `${d} ${e.time || '00:00'} ${e.createdAt || ''}`;
+  };
   function byDateDesc(a, b) { return sortKey(b).localeCompare(sortKey(a)); }
 
   async function loadEntries() {
@@ -512,6 +517,8 @@
       time: /^\d{1,2}:\d{2}$/.test(str(ai.time)) ? str(ai.time).padStart(5, '0') : '',
       vitals: cleanVitals(ai.vitals),
       symptoms: Array.isArray(ai.symptoms) ? ai.symptoms.map(str).filter(Boolean) : [],
+      needsReview: Array.isArray(ai.needsReview) ? ai.needsReview.map(str).filter(Boolean) : [],
+      dateRead: str(ai.dateRead),
       files: [...new Set(idx.map(Number))].map((i) => files[i]).filter(Boolean),
     };
   }
@@ -733,7 +740,7 @@
     }
     return `
       <div class="inv">
-        <div class="inv-head"><span>Investigation</span><span>Result</span><span>Reference</span></div>
+        <div class="inv-head"><span>Test</span><span>Result</span><span><button type="button" class="abbr" data-abbr title="Reference range" aria-label="Reference range"><span class="ab-short">Ref.</span><span class="ab-full">Reference</span></button></span></div>
         ${groups.map((g) => `
           ${g.sec ? `<div class="inv-sec">${esc(g.sec)}</div>` : ''}
           ${g.rows.map((f) => {
@@ -754,9 +761,23 @@
         <div class="kebab-menu" role="menu">
           ${(e.files || []).length ? `<button type="button" role="menuitem" data-sources="${e.id}">View original files</button>` : ''}
           ${!e.scanned && (e.files || []).length ? `<button type="button" role="menuitem" data-retry="${e.id}">Retry scan</button>` : ''}
+          <button type="button" role="menuitem" data-setdate="${e.id}">Change date</button>
           <button type="button" role="menuitem" class="danger" data-delete="${e.id}">Delete record</button>
         </div>
       </details>`;
+  }
+
+  const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; };
+  const dateSuspect = (e) => !e.date || e.date > todayISO() || e.date < '1950-01-01' || (e.needsReview || []).includes('date');
+
+  function reviewBanner(e) {
+    const r = (e.needsReview || []).filter((x) => x !== 'date');
+    const parts = [];
+    if (dateSuspect(e) && !e.manual) {
+      parts.push(`<button type="button" class="rv-item" data-setdate="${e.id}">⚠ ${e.date ? 'Date looks wrong' : 'Date not read'}${e.dateRead ? ` (read “${esc(e.dateRead)}”)` : ''} — <u>set date</u></button>`);
+    }
+    if (r.length) parts.push(`<span class="rv-item">⚠ AI wasn’t sure about: ${esc(r.join(', '))}. Check the original file.</span>`);
+    return parts.length ? `<div class="review">${parts.join('')}</div>` : '';
   }
 
   function cardHTML(e) {
@@ -798,6 +819,7 @@
         <header class="c-top">${icon(k)}<h3 class="c-name">${esc(e.title)}</h3>${kebab(e)}</header>
         ${meta}
         ${who.length ? `<p class="c-who">${hospIcon}<span>${esc(who.join(' · '))}</span></p>` : ''}
+        ${reviewBanner(e)}
         ${vitalsChips(v)}
         ${bpNote(v)}
         ${preview}
@@ -809,9 +831,11 @@
           ${e.diagnosis ? `<h4 class="c-h">Diagnosis</h4>${bulletList(splitList(e.diagnosis))}` : ''}
           ${e.suggestions ? `<h4 class="c-h">Doctor’s advice</h4><p class="c-text">${esc(e.suggestions)}</p>` : ''}
           ${meds.length ? `<h4 class="c-h">Medicines</h4>
+          <p class="med-warn">Read by AI${k === 'rx' || k === 'doctor' ? ' from handwriting' : ''}. Always match name and dose with the original prescription before taking.</p>
           <ul class="meds">${meds.map((m) => `
-            <li><span class="pill">${icon('rx', 14)}</span><div><strong>${esc(m.name)}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
-          </ul>` : ''}
+            <li class="${m.unclear ? 'unclear' : ''}"><span class="pill">${icon('rx', 14)}</span><div><strong>${esc(m.name)}${m.unclear ? ' <b class="chk">Check</b>' : ''}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
+          </ul>
+          ${(e.files || []).length ? `<button type="button" class="link-btn" data-sources="${e.id}">View original prescription</button>` : ''}` : ''}
           ${e.billAmount ? `<p class="c-bill">Bill amount <strong>${esc(e.billAmount)}</strong></p>` : ''}
           ${k !== 'vitals' ? `
           <div class="tldr-wrap">
@@ -852,11 +876,41 @@
         : '';
       return `
       <li class="t-item k-${e.scanned ? kindOf(e) : 'other'}${first ? ' day-first' : ''}" id="rec-${e.id}">
-        <span class="t-rail">${dateBlock}${e.time ? `<span class="r-time">${esc(fmtTime(e.time))}</span>` : ''}</span>
+        <span class="t-rail${first && dateSuspect(e) && !e.manual ? ' suspect' : ''}">${dateBlock}${e.time ? `<span class="r-time">${esc(fmtTime(e.time))}</span>` : ''}</span>
         <span class="t-dot" aria-hidden="true"></span>
         ${cardHTML(e)}
       </li>`;
     }).join('');
+  }
+
+  // ---------- Fix a record's date ----------
+  function changeDate(id) {
+    const e = entries.find((x) => x.id === id);
+    if (!e) return;
+    const inp = document.createElement('input');
+    inp.type = 'date';
+    inp.max = todayISO();
+    inp.value = isoDate(e.date) && e.date <= todayISO() ? e.date : '';
+    inp.className = 'sr-only';
+    document.body.appendChild(inp);
+    const done = () => setTimeout(() => inp.remove(), 0);
+    inp.addEventListener('change', async () => {
+      const d = inp.value;
+      done();
+      if (!isoDate(d)) return;
+      e.date = d;
+      e.needsReview = (e.needsReview || []).filter((x) => x !== 'date');
+      try {
+        const { id: rid, ...data } = e;
+        const { error } = await sb.from('hh_records').update({ data, record_date: d }).eq('id', rid);
+        if (error) throw error;
+        await loadEntries();
+        renderHistory();
+        document.getElementById('rec-' + rid)?.scrollIntoView({ block: 'center' });
+      } catch (err) { alert('Could not save date: ' + err.message); }
+    });
+    inp.addEventListener('blur', done);
+    try { inp.showPicker(); } catch { inp.classList.remove('sr-only'); inp.focus(); inp.click(); }
   }
 
   // ---------- Manual BP / vitals ----------
@@ -1117,6 +1171,10 @@
     $('#timeline').addEventListener('click', async (e) => {
       const t = e.target.closest('[data-tldr]');
       if (t) return toggleTldr(t);
+      const sd = e.target.closest('[data-setdate]');
+      if (sd) { sd.closest('details')?.removeAttribute('open'); return changeDate(sd.dataset.setdate); }
+      const ab = e.target.closest('[data-abbr]');
+      if (ab) { ab.classList.toggle('show-full'); return; }
       const x = e.target.closest('[data-expand]');
       if (x) {
         const open = x.closest('.t-card').classList.toggle('open');
