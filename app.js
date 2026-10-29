@@ -152,6 +152,16 @@
     });
   }
 
+  const fileMeta = (f, path) => {
+    const m = { id: f.id, name: f.name, mediaType: f.mediaType, path };
+    if (f.storeOnly) m.storeOnly = true;          // original PDF kept for viewing/download, not sent to the AI
+    if (f.docId) m.docId = f.docId;
+    if (f.page) m.page = f.page;
+    if (f.side) m.side = f.side;
+    if (f.text) m.text = String(f.text).slice(0, 20000); // exact text layer of a PDF page
+    return m;
+  };
+
   async function putEntry(e, patientId) {
     const files = [];
     for (const f of e.files || []) {
@@ -160,9 +170,9 @@
         const path = `${user.id}/${patientId}/${e.id}/${f.id}.${ext}`;
         const { error } = await sb.storage.from(BUCKET).upload(path, dataUrlToBlob(f.dataUrl), { contentType: f.mediaType, upsert: true });
         if (error) throw new Error('File upload failed: ' + error.message);
-        files.push({ id: f.id, name: f.name, mediaType: f.mediaType, path });
+        files.push(fileMeta(f, path));
       } else {
-        files.push({ id: f.id, name: f.name, mediaType: f.mediaType, path: f.path });
+        files.push(fileMeta(f, f.path));
       }
     }
     const { id, ...rest } = e;
@@ -414,9 +424,10 @@
   }
 
   // ---------- Upload / pending ----------
-  const MAX_FILES = 10;
+  const MAX_FILES = 24;           // total items in one upload (PDF pages count individually)
+  const MAX_PDF_PAGES = 20;
+  const MAX_PDF_BYTES = 40e6;     // original PDF size we accept (pages are rendered on the phone)
   const MAX_SIDE = 2400; // keep small print (dates, doses) readable
-  const MAX_PDF_BYTES = 3.5e6;
   let pending = [];
 
   function loadImage(src) {
@@ -449,27 +460,103 @@
     for (const f of [...fileList]) {
       if (pending.length >= MAX_FILES) { setStatus(scanStatus, `Up to ${MAX_FILES} files per scan.`, 'error'); break; }
       try {
-        if (f.type === 'application/pdf') {
-          if (f.size > MAX_PDF_BYTES) { setStatus(scanStatus, `${esc(f.name)} is too large (max 3.5 MB PDF). Try photos of the pages instead.`, 'error'); continue; }
-          pending.push({ id: uid(), name: f.name, mediaType: 'application/pdf', dataUrl: await blobToDataURL(f) });
+        if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+          if (f.size > MAX_PDF_BYTES) { setStatus(scanStatus, `${esc(f.name)} is too large (max 40 MB).`, 'error'); continue; }
+          await addPdf(f, scanStatus);
         } else if (f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name)) {
           pending.push({ id: uid(), name: f.name, mediaType: 'image/jpeg', dataUrl: await compressImage(f) });
         } else {
           setStatus(scanStatus, `${esc(f.name)}: only images and PDFs are supported.`, 'error');
         }
-      } catch {
-        setStatus(scanStatus, `Couldn’t read ${esc(f.name)}. If it’s HEIC, try exporting as JPG.`, 'error');
+      } catch (err) {
+        setStatus(scanStatus, /pdf/i.test(f.type + f.name) ? esc(err.message || `Couldn’t read ${f.name}.`) : `Couldn’t read ${esc(f.name)}. If it’s HEIC, try exporting as JPG.`, 'error');
       }
     }
     renderPending();
   }
 
+  // ---------- PDF: render each page to a sharp image + keep its exact text ----------
+  let pdfjsReady = null;
+  function loadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (!pdfjsReady) {
+      pdfjsReady = new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        sc.onload = () => {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          resolve(window.pdfjsLib);
+        };
+        sc.onerror = () => { pdfjsReady = null; reject(new Error('PDF reader did not load. Check your internet and try again.')); };
+        document.head.appendChild(sc);
+      });
+    }
+    return pdfjsReady;
+  }
+
+  async function addPdf(file, statusEl) {
+    setStatus(statusEl, spin(`Opening ${file.name}…`));
+    const lib = await loadPdfJs();
+    const buf = await file.arrayBuffer();
+    let doc;
+    try {
+      doc = await lib.getDocument({ data: buf.slice(0) }).promise;
+    } catch (err) {
+      throw new Error(/password/i.test(err?.name || err?.message || '') ? `${file.name} is password-protected. Remove the password and try again.` : `Couldn’t open ${file.name}.`);
+    }
+    const docId = 'pdf-' + uid().slice(0, 8);
+    const base = file.name.replace(/\.pdf$/i, '');
+    const n = Math.min(doc.numPages, MAX_PDF_PAGES);
+    const room = MAX_FILES - pending.length;
+    if (room <= 0) throw new Error(`Up to ${MAX_FILES} pages per upload.`);
+    const count = Math.min(n, room);
+    for (let i = 1; i <= count; i++) {
+      setStatus(statusEl, spin(`Reading ${file.name} — page ${i} of ${count}…`));
+      const page = await doc.getPage(i);
+      const v1 = page.getViewport({ scale: 1 });
+      const scale = Math.min(3, 2000 / Math.max(v1.width, v1.height)); // ~2000px long side, sharp small print
+      const vp = page.getViewport({ scale });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: g, viewport: vp }).promise;
+      let text = '';
+      try {
+        const tc = await page.getTextContent();
+        // rebuild lines from text items (y position), so tables read left-to-right
+        const rows = new Map();
+        for (const it of tc.items) {
+          if (!it.str || !it.str.trim()) continue;
+          const y = Math.round(it.transform[5] / 3);
+          if (!rows.has(y)) rows.set(y, []);
+          rows.get(y).push({ x: it.transform[4], s: it.str });
+        }
+        text = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, r]) => r.sort((a, b) => a.x - b.x).map((t) => t.s).join('  ')).join('\n');
+      } catch { /* scanned PDFs have no text layer */ }
+      pending.push({
+        id: uid(), name: `${base} – page ${i} of ${n}.jpg`, mediaType: 'image/jpeg',
+        dataUrl: c.toDataURL('image/jpeg', 0.85), docId, page: i, text,
+      });
+      page.cleanup();
+      renderPending();
+    }
+    // keep the untouched original too (viewing / sharing), but don't send it to the AI
+    pending.push({ id: uid(), name: file.name, mediaType: 'application/pdf', dataUrl: await blobToDataURL(file), docId, storeOnly: true });
+    renderPending();
+    doc.destroy();
+    setStatus(statusEl, n > count
+      ? `Added ${count} of ${n} pages (limit ${MAX_FILES} per upload).`
+      : `Added ${count} page${count > 1 ? 's' : ''} from ${esc(file.name)}.`, n > count ? 'error' : 'ok');
+  }
+
   function renderPending() {
     $('#pending').hidden = pending.length === 0;
-    $('#pendingCount').textContent = pending.length;
+    $('#pendingCount').textContent = pending.filter((p) => !p.storeOnly).length;
     $('#pendingList').innerHTML = pending.map((p) => `
       <li class="thumb">
-        ${p.mediaType === 'application/pdf' ? `<div class="pdf">PDF<small>${esc(p.name)}</small></div>` : `<img src="${p.dataUrl}" alt="${esc(p.name)}">`}
+        ${p.mediaType === 'application/pdf' ? `<div class="pdf">PDF<small>${p.storeOnly ? 'Original file' : esc(p.name)}</small></div>` : `<img src="${p.dataUrl}" alt="${esc(p.name)}">`}
+        ${p.docId && !p.side && p.page ? `<span class="side-badge">p${p.page}</span>` : ''}
         ${p.side ? `<span class="side-badge">${p.side === 'back' ? 'Back' : 'Front'} · p${p.page}</span>` : ''}
         <button class="remove" type="button" data-remove="${p.id}" aria-label="Remove ${esc(p.name)}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
@@ -494,7 +581,7 @@
     }
     return data;
   }
-  const toApiFile = async (f) => ({ name: f.name, mediaType: f.mediaType, data: (await fileAsDataURL(f)).split(',')[1] });
+  const toApiFile = async (f) => ({ name: f.name, mediaType: f.mediaType, data: (await fileAsDataURL(f)).split(',')[1], ...(f.text ? { text: f.text } : {}) });
 
   const VITAL_KEYS = ['bpSystolic', 'bpDiastolic', 'pulse', 'sugar', 'spo2', 'temperature', 'weight', 'height'];
   function cleanVitals(v) {
@@ -562,7 +649,18 @@
 
   // Read files with the AI. Groups up to 4 pages per request; if a group fails, retries each file alone.
   // Returns records; files that still fail come back as one "not scanned yet" record so nothing is lost.
-  async function scanFiles(files, onProgress) {
+  async function scanFiles(allFiles, onProgress) {
+    const originals = allFiles.filter((f) => f.storeOnly);
+    const files = allFiles.filter((f) => !f.storeOnly);
+    if (!files.length) throw new Error('Nothing to read in these files.');
+    const result = await scanFilesInner(files, onProgress);
+    for (const o of originals) {
+      const home = result.find((e) => (e.files || []).some((f) => f.docId && f.docId === o.docId)) || result[0];
+      if (home) home.files.push(o);
+    }
+    return result;
+  }
+  async function scanFilesInner(files, onProgress) {
     const batches = await makeBatches(files);
     const out = [];
     const failed = [];
@@ -603,7 +701,7 @@
     const who = pname(active());
     btn.disabled = true;
     try {
-      const list = await scanFiles(files, (d, n) => setStatus(status, spin(n > 1 ? `Reading files for ${who}… ${d}/${n} done` : `Reading the file for ${who}… ~20 seconds`)));
+      const list = await scanFiles(files, (d, n) => setStatus(status, spin(n > 1 ? `Reading pages for ${who}… ${d}/${n} done` : `Reading the file for ${who}… ~20 seconds`)));
       setStatus(status, spin('Saving to your account…'));
       for (const e of list) await putEntry(e, patientId);
       pending = [];
@@ -934,8 +1032,9 @@
     const label = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = spin('Making PDF…'); }
     try {
-      if (!imgs.length && pdfs.length) { // already a PDF — open it
-        const { data } = await sb.storage.from(BUCKET).createSignedUrl(pdfs[0].path, 600);
+      if (pdfs.length && (pdfs.some((f) => f.storeOnly) || !imgs.length)) { // original PDF exists — give that, untouched
+        const orig = pdfs.find((f) => f.storeOnly) || pdfs[0];
+        const { data } = await sb.storage.from(BUCKET).createSignedUrl(orig.path, 600, { download: orig.name });
         if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
         return;
       }
@@ -1233,7 +1332,11 @@
     $('#pendingList').addEventListener('click', (e) => {
       const b = e.target.closest('[data-remove]');
       if (!b) return;
+      const gone = pending.find((p) => p.id === b.dataset.remove);
       pending = pending.filter((p) => p.id !== b.dataset.remove);
+      if (gone?.storeOnly) pending = pending.filter((p) => p.docId !== gone.docId);           // remove the whole PDF
+      else if (gone?.docId && !pending.some((p) => p.docId === gone.docId && !p.storeOnly))   // last page removed
+        pending = pending.filter((p) => p.docId !== gone.docId);
       renderPending();
     });
     $('#clearPending').addEventListener('click', () => { pending = []; renderPending(); setStatus($('#scanStatus'), ''); });

@@ -10,7 +10,7 @@ const SYSTEM = `You read photos and PDFs of personal health documents (lab repor
 
 The user may upload several documents in ANY order, possibly from different visits. Group pages that belong to the same visit/report together, and create one record per visit/report. Read every word, including handwriting, as carefully as you can. Never invent values: if something is not written, leave it as an empty string or empty list.
 
-Files named like "Scan A – page 1 (front)" / "(back)" are the front and back of the same paper, photographed with the app's scanner: always keep all pages with the same scan letter in ONE record and read both sides.
+"Name – page 2 of 5" files are consecutive pages of ONE PDF: keep them in one record unless the pages are clearly different reports (different test date or report type). Files named like "Scan A – page 1 (front)" / "(back)" are the front and back of the same paper, photographed with the app's scanner: always keep all pages with the same scan letter in ONE record and read both sides.
 
 ACCURACY RULES — people will rely on this for their health, mistakes can hurt them:
 - Dates: first copy the date text exactly into "dateText", then convert it. Look closely at similar digits (6/8, 1/7, 3/8, 0/6, 5/6) — zoom into the printed year. Prefer "Sample collected" / "Visit" date over printed-on or report dates. These are Indian documents, written DAY/MONTH/YEAR (e.g. 07/04/26 = 7 April 2026). Never swap day and month. Never guess a missing or unreadable year — leave "date" as "" instead. Today is {{TODAY}}; a report cannot be from the future, so if what you read is after today, you misread it: leave "" and add "date" to needsReview.
@@ -108,12 +108,15 @@ export default async function handler(req, res) {
     await requireUser(req);
     const { files } = readBody(req);
     if (!Array.isArray(files) || !files.length) return send(res, 400, { error: 'No files received' });
-    if (files.length > 10) return send(res, 400, { error: 'Up to 10 files per scan' });
+    if (files.length > 10) return send(res, 400, { error: 'Up to 10 pages per request' });
 
     const content = [];
     files.forEach((f, i) => {
       if (!f || typeof f.data !== 'string') return;
       content.push({ type: 'text', text: `File ${i}: ${String(f.name || 'upload').slice(0, 120)}` });
+      if (typeof f.text === 'string' && f.text.trim()) {
+        content.push({ type: 'text', text: `Exact text layer of File ${i} (copied from the PDF itself — use it for exact numbers, dates, names and doses; the image shows the layout):\n${f.text.slice(0, 20000)}` });
+      }
       if (f.mediaType === 'application/pdf') {
         content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
       } else if (/^image\/(jpeg|png|webp|gif)$/.test(f.mediaType)) {
