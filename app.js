@@ -837,26 +837,26 @@
       $('#timeline').innerHTML = `<li class="muted">No records match “${esc(q)}”.</li>`;
       return;
     }
-    // group by day
-    const days = [];
-    for (const e of list) {
+    // left rail: "Oct 17, / 2026 / Tue" on the first card of each day; later cards that day show only the time
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let prevDay = null;
+    $('#timeline').innerHTML = list.map((e) => {
       const d = e.date || (e.createdAt || '').slice(0, 10);
-      let g = days[days.length - 1];
-      if (!g || g.d !== d) days.push(g = { d, items: [] });
-      g.items.push(e);
-    }
-    $('#timeline').innerHTML = days.map((g) => `
-      <li class="day">
-        <h2 class="day-label">${esc(dayLabel(g.d))}</h2>
-        <ol class="day-items">
-          ${g.items.map((e) => `
-          <li class="t-item k-${e.scanned ? kindOf(e) : 'other'}" id="rec-${e.id}">
-            <span class="t-time">${e.time ? esc(fmtTime(e.time)) : ''}</span>
-            <span class="t-dot" aria-hidden="true"></span>
-            ${cardHTML(e)}
-          </li>`).join('')}
-        </ol>
-      </li>`).join('');
+      const first = d !== prevDay;
+      prevDay = d;
+      const dt = new Date(d + 'T00:00:00');
+      const dateBlock = first
+        ? (isNaN(dt) ? '<span class="r-md">No date</span>'
+          : `<span class="r-md">${MON[dt.getMonth()]} ${dt.getDate()},</span><span class="r-y">${dt.getFullYear()}</span><span class="r-wd">${WD[dt.getDay()]}</span>`)
+        : '';
+      return `
+      <li class="t-item k-${e.scanned ? kindOf(e) : 'other'}${first ? ' day-first' : ''}" id="rec-${e.id}">
+        <span class="t-rail">${dateBlock}${e.time ? `<span class="r-time">${esc(fmtTime(e.time))}</span>` : ''}</span>
+        <span class="t-dot" aria-hidden="true"></span>
+        ${cardHTML(e)}
+      </li>`;
+    }).join('');
   }
 
   // ---------- Manual BP / vitals ----------
