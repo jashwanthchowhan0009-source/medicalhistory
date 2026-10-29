@@ -14,21 +14,18 @@ export async function askAI({ system, content, maxTokens = 8192 }) {
       ? { text: c.text }
       : { inline_data: { mime_type: c.source.media_type, data: c.source.data } });
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+  const call = (extra) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: maxTokens,
-        responseMimeType: 'application/json',
-        // keep "thinking" small so the answer itself has room (thinking tokens count against the output limit)
-        thinkingConfig: { thinkingBudget: 1024 },
-      },
+      generationConfig: { temperature: 0, maxOutputTokens: maxTokens, responseMimeType: 'application/json', ...extra },
     }),
   });
+  // careful reading: enough thinking to double-check digits, and full-detail images for small print
+  let res = await call({ thinkingConfig: { thinkingBudget: 4096 }, mediaResolution: 'MEDIA_RESOLUTION_HIGH' });
+  if (res.status === 400) res = await call({ thinkingConfig: { thinkingBudget: 2048 } }); // older model/API: drop optional settings
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data?.error?.message || `AI error (${res.status})`;

@@ -415,7 +415,7 @@
 
   // ---------- Upload / pending ----------
   const MAX_FILES = 10;
-  const MAX_SIDE = 1600;
+  const MAX_SIDE = 2400; // keep small print (dates, doses) readable
   const MAX_PDF_BYTES = 3.5e6;
   let pending = [];
 
@@ -440,7 +440,7 @@
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-      return c.toDataURL('image/jpeg', 0.82);
+      return c.toDataURL('image/jpeg', 0.8);
     } finally { URL.revokeObjectURL(url); }
   }
 
@@ -519,6 +519,8 @@
       symptoms: Array.isArray(ai.symptoms) ? ai.symptoms.map(str).filter(Boolean) : [],
       needsReview: Array.isArray(ai.needsReview) ? ai.needsReview.map(str).filter(Boolean) : [],
       dateRead: str(ai.dateRead),
+      dateText: str(ai.dateText),
+      dateAutoFixed: !!ai.dateAutoFixed,
       files: [...new Set(idx.map(Number))].map((i) => files[i]).filter(Boolean),
     };
   }
@@ -770,13 +772,32 @@
   const todayISO = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`; };
   const dateSuspect = (e) => !e.date || e.date > todayISO() || e.date < '1950-01-01' || (e.needsReview || []).includes('date');
 
+  // Same rule as the server: a future year is a misread digit — keep day & month, use the latest past year.
+  function suggestDate(iso) {
+    const t = todayISO();
+    const [, mm, dd] = String(iso).split('-');
+    for (let y = +t.slice(0, 4); y >= +t.slice(0, 4) - 1; y--) {
+      const c = `${y}-${mm}-${dd}`;
+      if (isoDate(c) && !isNaN(new Date(c + 'T00:00:00')) && c <= t) return c;
+    }
+    return '';
+  }
   function reviewBanner(e) {
     const r = (e.needsReview || []).filter((x) => x !== 'date');
     const parts = [];
-    if (dateSuspect(e) && !e.manual) {
-      parts.push(`<button type="button" class="rv-item" data-setdate="${e.id}">⚠ ${e.date ? 'Date looks wrong' : 'Date not read'}${e.dateRead ? ` (read “${esc(e.dateRead)}”)` : ''} — <u>set date</u></button>`);
+    if (!e.manual) {
+      if (e.date && e.date > todayISO()) {
+        const sug = suggestDate(e.date);
+        parts.push(`<div class="rv-item">⚠ ${esc(fmtDate(e.date))} is in the future — misread.${sug ? ` Did you mean <strong>${esc(fmtDate(sug))}</strong>?` : ''}
+          <span class="rv-actions">${sug ? `<button type="button" class="rv-btn" data-fixdate="${e.id}" data-to="${sug}">Yes, fix</button>` : ''}<button type="button" class="rv-btn ghost" data-setdate="${e.id}">Pick date</button></span></div>`);
+      } else if (e.dateAutoFixed || (e.needsReview || []).includes('date')) {
+        parts.push(`<div class="rv-item">⚠ ${e.dateAutoFixed ? `AI read “${esc(e.dateRead ? fmtDate(e.dateRead) : e.dateText)}”, corrected to ${esc(fmtDate(e.date))}.` : 'Please confirm the date.'}${e.dateText ? ` Printed: “${esc(e.dateText)}”.` : ''}
+          <span class="rv-actions"><button type="button" class="rv-btn" data-okdate="${e.id}">Correct</button><button type="button" class="rv-btn ghost" data-setdate="${e.id}">Change</button></span></div>`);
+      } else if (!e.date) {
+        parts.push(`<div class="rv-item">⚠ Date not found on the document. <span class="rv-actions"><button type="button" class="rv-btn" data-setdate="${e.id}">Set date</button></span></div>`);
+      }
     }
-    if (r.length) parts.push(`<span class="rv-item">⚠ AI wasn’t sure about: ${esc(r.join(', '))}. Check the original file.</span>`);
+    if (r.length) parts.push(`<div class="rv-item">⚠ AI wasn’t sure about: ${esc(r.join(', '))}. Check the original file.</div>`);
     return parts.length ? `<div class="review">${parts.join('')}</div>` : '';
   }
 
@@ -884,6 +905,21 @@
   }
 
   // ---------- Fix a record's date ----------
+  async function saveDate(id, d) {
+    const e = entries.find((x) => x.id === id);
+    if (!e || !isoDate(d)) return;
+    e.date = d;
+    e.dateAutoFixed = false;
+    e.needsReview = (e.needsReview || []).filter((x) => x !== 'date');
+    try {
+      const { id: rid, ...data } = e;
+      const { error } = await sb.from('hh_records').update({ data, record_date: d }).eq('id', rid);
+      if (error) throw error;
+      await loadEntries();
+      renderHistory();
+      document.getElementById('rec-' + rid)?.scrollIntoView({ block: 'center' });
+    } catch (err) { alert('Could not save date: ' + err.message); }
+  }
   function changeDate(id) {
     const e = entries.find((x) => x.id === id);
     if (!e) return;
@@ -894,21 +930,7 @@
     inp.className = 'sr-only';
     document.body.appendChild(inp);
     const done = () => setTimeout(() => inp.remove(), 0);
-    inp.addEventListener('change', async () => {
-      const d = inp.value;
-      done();
-      if (!isoDate(d)) return;
-      e.date = d;
-      e.needsReview = (e.needsReview || []).filter((x) => x !== 'date');
-      try {
-        const { id: rid, ...data } = e;
-        const { error } = await sb.from('hh_records').update({ data, record_date: d }).eq('id', rid);
-        if (error) throw error;
-        await loadEntries();
-        renderHistory();
-        document.getElementById('rec-' + rid)?.scrollIntoView({ block: 'center' });
-      } catch (err) { alert('Could not save date: ' + err.message); }
-    });
+    inp.addEventListener('change', () => { const d = inp.value; done(); saveDate(id, d); });
     inp.addEventListener('blur', done);
     try { inp.showPicker(); } catch { inp.classList.remove('sr-only'); inp.focus(); inp.click(); }
   }
@@ -1171,6 +1193,10 @@
     $('#timeline').addEventListener('click', async (e) => {
       const t = e.target.closest('[data-tldr]');
       if (t) return toggleTldr(t);
+      const fx = e.target.closest('[data-fixdate]');
+      if (fx) return saveDate(fx.dataset.fixdate, fx.dataset.to);
+      const ok = e.target.closest('[data-okdate]');
+      if (ok) { const r = entries.find((x) => x.id === ok.dataset.okdate); return r && saveDate(r.id, r.date); }
       const sd = e.target.closest('[data-setdate]');
       if (sd) { sd.closest('details')?.removeAttribute('open'); return changeDate(sd.dataset.setdate); }
       const ab = e.target.closest('[data-abbr]');

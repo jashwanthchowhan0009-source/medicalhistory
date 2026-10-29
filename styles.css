@@ -655,3 +655,10 @@ button.rv-item { cursor: pointer; }
   background: linear-gradient(135deg, color-mix(in srgb, var(--green) 85%, #fff), var(--green));
   box-shadow: 0 4px 14px color-mix(in srgb, var(--green) 45%, transparent);
 }
+
+.rv-item { display: block; }
+.rv-actions { display: flex; gap: 6px; margin-top: 6px; }
+.rv-btn { min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--warn); background: var(--warn); color: #fff; font: 700 12px var(--sans); cursor: pointer; }
+.rv-btn.ghost { background: transparent; color: var(--warn); }
+:root[data-theme="dark"] .rv-btn:not(.ghost) { color: #111; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rv-btn:not(.ghost) { color: #111; } }
