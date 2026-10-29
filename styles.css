@@ -834,3 +834,13 @@ button.rv-item { cursor: pointer; }
 .get-app:hover { border-color: var(--green); }
 .footer-links { margin-top: 6px; font-size: 13px; }
 .is-app [data-getapp], .is-app .footer-links { display: none !important; }
+
+/* ===== v10: "Prescribed by" doctor chips ===== */
+.dm-doc .lbl { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.doc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.doc-chip { min-height: 38px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: 600 13.5px/1.25 var(--sans); cursor: pointer; text-align: left; max-width: 100%; }
+.doc-chip:hover { border-color: var(--green); }
+.doc-chip.on { background: var(--green-tint); border-color: var(--green); color: var(--green); }
+.doc-chip.on::before { content: '✓ '; }
+.dm-doc .hint { margin-top: 6px; color: var(--green); }
+.dm-doc-line { display: block; font-size: 12.5px; }

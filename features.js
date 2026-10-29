@@ -125,7 +125,7 @@
       };
       tick(); codeTimer = setInterval(tick, 1000);
     } catch (err) {
-      body.innerHTML = `<p class="status error">${esc(err.message)}</p>${setupNote()}`;
+      body.innerHTML = `<p class="status error">${esc(errMsg(err))}</p>${setupNote()}`;
     }
   }
 
@@ -178,7 +178,7 @@
         const d = m.data || {};
         return `<li>
           <button type="button" class="dm-pic${d.photo ? ' has' : ''}" data-dmpic="${m.id}" aria-label="Tablet picture">${A().render.icon('rx', 16)}</button>
-          <div class="dm-main"><strong>${esc(d.name)}</strong>${d.dose ? `<span>${esc(d.dose)}</span>` : ''}${d.endDate ? `<span class="muted">till ${esc(A().fmtDate(d.endDate))}</span>` : ''}</div>
+          <div class="dm-main"><strong>${esc(d.name)}</strong>${d.dose ? `<span>${esc(d.dose)}</span>` : ''}${d.endDate ? `<span class="muted">till ${esc(A().fmtDate(d.endDate))}</span>` : ''}${d.doctor ? `<span class="muted dm-doc-line">${esc(d.doctor)}</span>` : ''}</div>
           <div class="dm-slots">${SLOTS.map((s) => `<i class="${(d.slots || []).includes(s.k) ? 'on' : ''}" title="${s.label}">${s.k}</i>`).join('')}${d.food ? `<em title="${FOOD[d.food]}">${d.food}</em>` : ''}</div>
           <button type="button" class="dm-bell${d.remind ? ' on' : ''}" data-dmbell="${m.id}" aria-label="${d.remind ? 'Reminder on' : 'Reminder off'}" aria-pressed="${!!d.remind}">🔔</button>
           <button type="button" class="dm-edit" data-dmedit="${m.id}" aria-label="Edit ${esc(d.name)}">✎</button>
@@ -210,6 +210,43 @@
     return { slots, food };
   }
 
+  // ── Doctors from this patient's reports, and which one prescribed a tablet ──
+  const docKey = (n) => String(n || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\bdr\b\.?/g, '').replace(/[^a-z]/g, '');
+  const MED_STOP = /^(tab|tabs|tablet|tablets|cap|caps|capsule|capsules|syp|syrup|inj|injection|t|c|oint|ointment|gel|drops?|susp|suspension|mg|ml|mcg|iu|sr|er|xr|cr|ds|forte|plus)$/;
+  const medKey = (n) => (String(n || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).find((w) => w.length >= 3 && /[a-z]/.test(w) && !MED_STOP.test(w)) || '');
+  function reportDoctors() {
+    const seen = new Map();
+    [...(A().entries || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).forEach((e) => {
+      const name = String(e.doctor || '').trim(); const k = docKey(name);
+      if (k.length >= 3 && !seen.has(k)) seen.set(k, name);
+    });
+    return [...seen.values()];
+  }
+  // newest prescription that lists this tablet AND names a doctor; null when none (then we say nothing)
+  function prescriberOf(names) {
+    const keys = names.map(medKey).filter(Boolean);
+    if (!keys.length) return null;
+    const recs = [...(A().entries || [])].filter((e) => String(e.doctor || '').trim())
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    for (const e of recs) {
+      if ((e.medicines || []).some((md) => keys.includes(medKey(md.name)))) return { doctor: e.doctor.trim(), date: e.date || '' };
+    }
+    return null;
+  }
+
+  // Supabase errors → words a person understands (the raw one stays in the console)
+  function errMsg(err) {
+    const msg = String(err?.message || err || 'Something went wrong');
+    console.warn('[MedH]', msg);
+    if (/schema cache|does not exist|could not find the (table|function)|PGRST20[25]|42P01|42883/i.test(msg)) {
+      // only happens before the one-time database setup, i.e. while the owner is setting up
+      return 'This feature isn’t switched on yet. Setup: run supabase/002_family_doctor_emergency.sql once in the Supabase SQL Editor, then reload.';
+    }
+    if (/failed to fetch|network|load failed/i.test(msg)) return 'No internet connection. Check it and try again.';
+    if (/row-level security|permission denied|not allowed/i.test(msg)) return 'You don’t have permission for this.';
+    return msg;
+  }
+
   function medForm(m, prefill = {}) {
     const d = { ...(m?.data || {}), ...prefill };
     const body = dialog(m ? 'Edit tablet' : 'Add daily tablet', `
@@ -226,13 +263,53 @@
           <div class="field"><label for="dm-start">From</label><input id="dm-start" name="startDate" type="date" value="${esc(d.startDate || A().todayISO())}"></div>
           <div class="field"><label for="dm-end">Till (optional)</label><input id="dm-end" name="endDate" type="date" value="${esc(d.endDate || '')}"></div>
         </div>
-        <div class="field"><label for="dm-note">Note</label><input id="dm-note" name="note" value="${esc(d.note || '')}" placeholder="e.g. prescribed by Dr Kumar"></div>
+        <div class="field dm-doc" id="dmDocField" hidden>
+          <span class="lbl" id="dmDocLbl">Prescribed by</span>
+          <div class="doc-chips" role="radiogroup" aria-labelledby="dmDocLbl" id="dmDocChips"></div>
+          <p class="hint" id="dmDocHint" hidden></p>
+        </div>
+        <div class="field"><label for="dm-note">Note</label><input id="dm-note" name="note" value="${esc(d.note || '')}" placeholder="e.g. take with warm water"></div>
         <label class="check"><input type="checkbox" name="remind" ${d.remind !== false ? 'checked' : ''}> Remind me</label>
         <p class="hint">Copy name and dose exactly from the prescription.</p>
         <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button>${m ? '<button class="link-btn danger" type="button" id="dmDelete">Remove</button>' : ''}</div>
         <p class="status" id="dmStatus" role="status"></p>
       </form>`);
     const f = $('#dmForm', body);
+    // doctor chips: every doctor found in this patient's reports; auto-pick the one whose prescription lists this tablet
+    const docs = reportDoctors();
+    if (d.doctor && !docs.some((x) => docKey(x) === docKey(d.doctor))) docs.unshift(d.doctor);
+    let pickedDoc = d.doctor || '';
+    let userPicked = !!d.doctor;
+    const chipsEl = $('#dmDocChips', body);
+    const paintDocs = () => {
+      chipsEl.innerHTML = docs.map((n) => `<button type="button" class="doc-chip${docKey(n) === docKey(pickedDoc) ? ' on' : ''}" role="radio" aria-checked="${docKey(n) === docKey(pickedDoc)}" data-doc="${esc(n)}">${esc(n)}</button>`).join('');
+    };
+    const detect = () => {
+      if (userPicked) return;
+      const hit = prescriberOf([$('#dm-name', body).value, ...(prefill.altNames || [])]);
+      const hint = $('#dmDocHint', body);
+      if (hit) {
+        pickedDoc = hit.doctor;
+        hint.hidden = false;
+        hint.textContent = `Found on ${hit.doctor}’s prescription${hit.date ? ` (${A().fmtDate(hit.date)})` : ''}.`;
+      } else { pickedDoc = ''; hint.hidden = true; }
+      paintDocs();
+    };
+    if (docs.length) {
+      $('#dmDocField', body).hidden = false;
+      paintDocs();
+      if (prefill.fromRecord && d.doctor) {
+        const hint = $('#dmDocHint', body); hint.hidden = false; hint.textContent = 'From this prescription.';
+      } else detect();
+      chipsEl.addEventListener('click', (ev) => {
+        const c = ev.target.closest('[data-doc]'); if (!c) return;
+        userPicked = true;
+        pickedDoc = docKey(c.dataset.doc) === docKey(pickedDoc) ? '' : c.dataset.doc;   // tap again to clear
+        $('#dmDocHint', body).hidden = true;
+        paintDocs();
+      });
+      let t; $('#dm-name', body).addEventListener('input', () => { clearTimeout(t); t = setTimeout(detect, 250); });
+    }
     f.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const fd = new FormData(f);
@@ -242,7 +319,9 @@
         slots: fd.getAll('slots'), food: String(fd.get('food') || ''),
         startDate: String(fd.get('startDate') || ''), endDate: String(fd.get('endDate') || ''),
         note: String(fd.get('note') || '').trim(), remind: !!fd.get('remind'),
+        doctor: pickedDoc,
       };
+      delete data.altNames;
       if (!data.name) return A().setStatus($('#dmStatus'), 'Enter the tablet name.', 'error');
       if (!data.slots.length) return A().setStatus($('#dmStatus'), 'Pick at least one time (M / A / E / N).', 'error');
       try {
@@ -253,12 +332,12 @@
         if (error) throw error;
         closeDialog();
         await loadMeds(); renderMeds(); scheduleReminders();
-      } catch (err) { A().setStatus($('#dmStatus'), esc(err.message), 'error'); }
+      } catch (err) { A().setStatus($('#dmStatus'), esc(errMsg(err)), 'error'); }
     });
     $('#dmDelete', body)?.addEventListener('click', async () => {
       if (!confirm(`Remove ${d.name} from Daily Tablets?`)) return;
       const { error } = await A().sb.from('hh_meds').delete().eq('id', m.id);
-      if (error) return alert(error.message);
+      if (error) return alert(errMsg(error));
       closeDialog(); await loadMeds(); renderMeds(); scheduleReminders();
     });
   }
@@ -294,7 +373,7 @@
       const file = ev.target.files[0]; if (!file) return;
       A().setStatus($('#medPhotoSt'), spin('Saving photo…'));
       try { await onUpload(file); closeDialog(); }
-      catch (err) { A().setStatus($('#medPhotoSt'), esc(err.message), 'error'); }
+      catch (err) { A().setStatus($('#medPhotoSt'), esc(errMsg(err)), 'error'); }
     });
   }
 
@@ -331,7 +410,7 @@
       const d = new Date(start + 'T00:00:00'); d.setDate(d.getDate() + n - 1);
       endDate = d.toISOString().slice(0, 10);
     }
-    medForm(null, { name: m.name, dose: m.dose || '', slots, food, endDate, photo: m.photo || '', note: [e.doctor && `From ${e.doctor}`, m.frequency].filter(Boolean).join(' · '), fromRecord: recId });
+    medForm(null, { name: m.name, dose: m.dose || '', slots, food, endDate, photo: m.photo || '', doctor: String(e.doctor || '').trim(), note: m.frequency || '', fromRecord: recId });
   }
 
   // ───────── Reminders ─────────
@@ -439,7 +518,7 @@
       }
       cardEditor({ id: A().uid(), ...card }, ph.dataUrl, true);
       A().setStatus(st, '');
-    } catch (err) { A().setStatus(st, esc(err.message), 'error'); }
+    } catch (err) { A().setStatus(st, esc(errMsg(err)), 'error'); }
     void p;
   }
   async function cardEditor(c, dataUrl, isNew) {
@@ -519,7 +598,7 @@
   async function setEmergency(patch) {
     const p = A().active();
     const { error } = await A().sb.from('hh_patients').update(patch).eq('id', p.id);
-    if (error) return alert(error.message);
+    if (error) return alert(errMsg(error));
     Object.assign(p, patch); renderEmergency();
   }
   async function emergencyImage(kind) {
@@ -654,7 +733,7 @@
       const { error } = await q;
       if (error) throw error;
       renderDoctor();
-    } catch (err) { A().setStatus(st, esc(err.message), 'error'); }
+    } catch (err) { A().setStatus(st, esc(errMsg(err)), 'error'); }
   }
 
   function doctorToolsHTML() {
@@ -809,7 +888,7 @@
       const r = window.jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
       if (!r?.data) throw new Error('No QR found in this photo.');
       handleQR(r.data);
-    } catch (err) { A().setStatus(st, esc(err.message), 'error'); }
+    } catch (err) { A().setStatus(st, esc(errMsg(err)), 'error'); }
   }
   async function handleQR(text) {
     const st = $('#qrSt');
@@ -895,9 +974,9 @@
         if (!A().activeId) return;
         let photo = '';
         try { photo = await uploadImage(`${A().user.id}/${A().activeId}/meds/${A().uid()}.jpg`, ph.dataUrl); } catch { /* optional */ }
-        medForm(null, { name: [pk.brand || pk.generic, pk.strength].filter(Boolean).join(' '), photo });
+        medForm(null, { name: [pk.brand || pk.generic, pk.strength].filter(Boolean).join(' '), photo, altNames: [pk.brand, pk.generic].filter(Boolean) });
       });
-    } catch (err) { body.innerHTML = `<p class="status error">${esc(err.message)}</p>`; }
+    } catch (err) { body.innerHTML = `<p class="status error">${esc(errMsg(err))}</p>`; }
   }
   function expired(s) {
     const m = String(s).match(/(\d{1,2})[/.-](\d{2,4})/) || String(s).match(/([A-Za-z]{3})\w*[\s.-]+(\d{2,4})/);
@@ -921,7 +1000,7 @@
       chat.push({ role: 'user', text: q }, { role: 'ai', text: r.answer });
       $('#askPending').outerHTML = `<div class="msg ai"><div class="md">${md(r.answer)}</div>${sourcesHTML(r.sources)}</div>`;
     } catch (err) {
-      $('#askPending').outerHTML = `<div class="msg ai err">${esc(err.message)}</div>`;
+      $('#askPending').outerHTML = `<div class="msg ai err">${esc(errMsg(err))}</div>`;
     }
     log.scrollTop = log.scrollHeight;
   }
@@ -974,7 +1053,7 @@
       const m = medsCache.find((x) => x.id === bell.dataset.dmbell); if (!m) return;
       const data = { ...m.data, remind: !m.data.remind };
       const { error } = await A().sb.from('hh_meds').update({ data }).eq('id', m.id);
-      if (error) return alert(error.message);
+      if (error) return alert(errMsg(error));
       m.data = data; renderMeds(); scheduleReminders();
       if (data.remind && 'Notification' in window && Notification.permission === 'default') enableNotifications();
       return;
@@ -1003,7 +1082,7 @@
       if (!confirm('Make a new QR? Old wallpapers and cards will stop working.')) return;
       const p = A().active();
       const { data, error } = await A().sb.rpc('rotate_emergency_token', { p_patient: p.id });
-      if (error) return alert(error.message);
+      if (error) return alert(errMsg(error));
       p.emergency_token = data; return renderEmergency();
     }
     const rv = t.closest('[data-revoke]');
@@ -1019,7 +1098,7 @@
       const note = rj ? prompt('Reason (shown to the doctor):', 'Registration number could not be verified') : '';
       if (rj && note === null) return;
       const { error } = await A().sb.rpc('admin_set_doctor', { p_user: (ap || rj).dataset[ap ? 'approve' : 'reject'], p_status: ap ? 'approved' : 'rejected', p_note: note || '' });
-      if (error) return alert(error.message);
+      if (error) return alert(errMsg(error));
       return renderAdmin();
     }
   });
