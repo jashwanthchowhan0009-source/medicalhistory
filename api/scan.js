@@ -26,8 +26,7 @@ Reply with ONLY a JSON object, no prose, in exactly this shape:
       "diagnosis": "",                    // only if written
       "suggestions": "",                  // doctor's advice in simple words: diet, rest, follow-up, further tests
       "medicines": [ { "name": "", "dose": "", "frequency": "", "duration": "" } ],  // tablets / syrups / injections prescribed or billed; frequency like "1-0-1 after food"
-      "billAmount": "",                   // total with currency if this is a bill, e.g. "₹1,250"
-      "tldr": ""                          // ONE short plain sentence: the single most important takeaway
+      "billAmount": ""                    // total with currency if this is a bill, e.g. "₹1,250"
     }
   ]
 }

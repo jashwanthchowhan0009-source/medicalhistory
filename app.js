@@ -500,7 +500,7 @@
       findings: arr(ai.findings),
       doctor: str(ai.doctor), hospital: str(ai.hospital), diagnosis: str(ai.diagnosis), suggestions: str(ai.suggestions),
       medicines: arr(ai.medicines),
-      billAmount: str(ai.billAmount), tldr: str(ai.tldr),
+      billAmount: str(ai.billAmount),
       files: [...new Set(idx.map(Number))].map((i) => files[i]).filter(Boolean),
     };
   }
@@ -671,7 +671,12 @@
           ${e.documentType ? `<span class="tag">${esc(e.documentType)}</span>` : ''}
           ${e.madeBy ? `<p class="c-meta">Made by ${esc(e.madeBy)}</p>` : ''}
         </header>
-        ${e.tldr ? `<p class="tldr"><span class="tldr-k">TL;DR</span>${esc(e.tldr)}</p>` : ''}
+        <div class="tldr-wrap">
+          <button class="tldr-btn" type="button" data-tldr="${e.id}" aria-expanded="false" aria-controls="tldr-${e.id}">
+            <span class="tldr-k">TL;DR</span><span class="tldr-hint">Explain this report simply</span>
+          </button>
+          <p class="tldr" id="tldr-${e.id}" hidden></p>
+        </div>
         ${(e.reportSays || findings.length) ? `
         <section class="c-sec">
           <h4 class="c-label">What the report says</h4>
@@ -725,6 +730,36 @@
         <div class="t-date">${esc(fmtDate(e.date))}${e.hospital ? `<small>${esc(e.hospital)}</small>` : ''}</div>
         ${cardHTML(e)}
       </li>`).join('');
+  }
+
+  // TL;DR is made only when asked, then saved on the record so it is never generated twice.
+  async function toggleTldr(btn) {
+    const id = btn.dataset.tldr;
+    const box = document.getElementById('tldr-' + id);
+    if (btn.getAttribute('aria-expanded') === 'true') {
+      btn.setAttribute('aria-expanded', 'false');
+      box.hidden = true;
+      return;
+    }
+    const e = entries.find((x) => x.id === id);
+    if (!e) return;
+    btn.setAttribute('aria-expanded', 'true');
+    box.hidden = false;
+    if (e.tldr) { box.textContent = e.tldr; return; }
+    box.innerHTML = spin('Summarising…');
+    btn.disabled = true;
+    try {
+      const { files, id: _id, createdAt, scanned, error, tldr, ...record } = e;
+      const { tldr: text } = await api('/api/tldr', { record });
+      e.tldr = text;
+      box.textContent = text;
+      try { // saving is best-effort; the summary is already on screen
+        const { id: rid, ...data } = e;
+        await sb.from('hh_records').update({ data }).eq('id', rid);
+      } catch (saveErr) { console.warn('TL;DR not saved', saveErr); }
+    } catch (err) {
+      box.innerHTML = `<span class="status error">${esc(err.status === 401 ? 'Session expired — please log in again.' : 'Couldn’t summarise: ' + err.message)}</span>`;
+    } finally { btn.disabled = false; }
   }
 
   async function openSources(id) {
@@ -911,6 +946,8 @@
 
     $('#searchInput').addEventListener('input', renderHistory);
     $('#timeline').addEventListener('click', async (e) => {
+      const t = e.target.closest('[data-tldr]');
+      if (t) return toggleTldr(t);
       const m = e.target.closest('[data-more]');
       if (m) return m.closest('.t-card').classList.toggle('show-all');
       const s = e.target.closest('[data-sources]');

@@ -428,3 +428,17 @@ main { outline: none; }
   .auth-card h1 { font-size: 24px; }
   .footer { padding: 16px 14px 24px; font-size: 12px; }
 }
+
+/* ================= TL;DR on demand ================= */
+.tldr-wrap { margin: 0 0 4px; }
+.tldr-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 12px 4px 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--surface); color: var(--ink); font: 600 13px var(--sans); cursor: pointer; }
+.tldr-btn:hover { border-color: var(--green); color: var(--green); }
+.tldr-btn .tldr-k { margin: 0; }
+.tldr-btn[aria-expanded="true"] { background: var(--ink); color: var(--bg); }
+.tldr-btn[aria-expanded="true"] .tldr-k { border-color: var(--bg); }
+.tldr-btn[aria-expanded="true"] .tldr-hint { display: none; }
+.tldr-btn[aria-expanded="true"]::after { content: "Hide"; }
+.tldr-btn[disabled] { opacity: .7; cursor: progress; }
+.tldr-wrap .tldr { margin: 8px 0 0; }
+.tldr-wrap .tldr .status { margin: 0; }
+.tldr-btn .tldr-k { display: inline-block; padding: 0 6px; font: 700 11px/20px var(--sans); letter-spacing: .04em; border: 1.5px solid currentColor; border-radius: 999px; }
