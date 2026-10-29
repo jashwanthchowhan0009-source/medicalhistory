@@ -209,10 +209,16 @@
             <p class="eyebrow">Timeline · <span id="historyPatient">—</span></p>
             <h1 id="historyTitle">History</h1>
           </div>
+          <div class="history-tools">
+          <button class="btn btn-outline btn-sm" type="button" id="addVitalsBtn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+            Add BP / vitals
+          </button>
           <div class="search">
             <label class="sr-only" for="searchInput">Search history</label>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input type="search" id="searchInput" placeholder="Search doctor, test, tablet…">
+          </div>
           </div>
         </div>
         <ol class="timeline" id="timeline"></ol>
@@ -296,6 +302,35 @@
       History
     </a>
   </nav>
+
+  <dialog id="vitalsDialog" class="dialog dialog-sm" aria-labelledby="vitalsTitle">
+    <form id="vitalsForm" method="dialog" novalidate>
+      <div class="dialog-head">
+        <h2 class="h3" id="vitalsTitle">Add BP / vitals</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p class="muted" id="vitalsFor"></p>
+        <div class="v-grid">
+          <div class="field"><label for="v-date">Date</label><input id="v-date" name="date" type="date" required></div>
+          <div class="field"><label for="v-time">Time</label><input id="v-time" name="time" type="time"></div>
+          <div class="field"><label for="v-sys">Systolic <small>mmHg</small></label><input id="v-sys" name="bpSystolic" type="number" inputmode="numeric" min="50" max="260" placeholder="120"></div>
+          <div class="field"><label for="v-dia">Diastolic <small>mmHg</small></label><input id="v-dia" name="bpDiastolic" type="number" inputmode="numeric" min="30" max="180" placeholder="80"></div>
+          <div class="field"><label for="v-pulse">Pulse <small>bpm</small></label><input id="v-pulse" name="pulse" type="number" inputmode="numeric" min="20" max="250" placeholder="72"></div>
+          <div class="field"><label for="v-sugar">Sugar <small>mg/dL</small></label><input id="v-sugar" name="sugar" type="number" inputmode="numeric" min="20" max="800"></div>
+          <div class="field"><label for="v-spo2">SpO₂ <small>%</small></label><input id="v-spo2" name="spo2" type="number" inputmode="numeric" min="50" max="100"></div>
+          <div class="field"><label for="v-temp">Temperature <small>°F</small></label><input id="v-temp" name="temperature" type="number" inputmode="decimal" step="0.1" min="90" max="110"></div>
+          <div class="field"><label for="v-weight">Weight <small>kg</small></label><input id="v-weight" name="weight" type="number" inputmode="decimal" step="0.1" min="1" max="350"></div>
+          <div class="field"><label for="v-note">Note</label><input id="v-note" name="note" type="text" placeholder="e.g. after walk"></div>
+        </div>
+        <p class="hint">Usual BP is between 90/60 and 120/80 mmHg.</p>
+        <div class="form-actions"><button class="btn btn-primary" type="submit" id="vitalsSave">Save reading</button></div>
+        <p class="status" id="vitalsStatus" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="sourcesDialog" class="dialog" aria-labelledby="sourcesTitle">
     <div class="dialog-head">

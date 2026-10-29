@@ -16,14 +16,17 @@ Reply with ONLY a JSON object, no prose, in exactly this shape:
     {
       "sourceIndexes": [0, 1],            // which uploaded files (0-based, in upload order) belong to this record
       "date": "YYYY-MM-DD",               // date of the test/visit/bill; "" if not visible
+      "time": "",                         // "HH:MM" 24-hour if a time is printed (sample collection / visit time), else ""
       "title": "Complete Blood Count",    // short name, e.g. "Thyroid Profile", "Prescription", "Pharmacy bill"
       "documentType": "Lab report",       // Lab report | Prescription | Doctor note | Discharge summary | Scan report | Bill | Other
       "madeBy": "",                       // lab / hospital / pharmacy that produced the document
       "reportSays": "",                   // 2-3 short sentences in very simple language a non-doctor understands: what was tested and what the results mean
-      "findings": [ { "name": "", "value": "", "unit": "", "range": "", "flag": "" } ],  // flag: "High", "Low" or "" (normal/unknown); include every measured value, keep names short
+      "findings": [ { "section": "", "name": "", "value": "", "unit": "", "range": "", "flag": "" } ],  // every measured value; section = the heading it sits under on the report (e.g. "Haemoglobin", "Blood indices", "Differential WBC count", "Lipid profile"); flag: "High", "Low" or "" (normal/unknown); keep names short
+      "vitals": { "bpSystolic": "", "bpDiastolic": "", "pulse": "", "temperature": "", "weight": "", "height": "", "spo2": "", "sugar": "" },  // only if written (BP in mmHg, pulse bpm, temperature as written e.g. "99 °F", weight "kg", height "cm" or as written, SpO2 %, sugar mg/dL)
+      "symptoms": [],                     // complaints / symptoms written by the doctor, short words, e.g. ["Fever", "Cough"]
       "doctor": "",                       // consulting doctor's name with title, e.g. "Dr. R. Kumar (General Physician)"
       "hospital": "",                     // clinic or hospital name
-      "diagnosis": "",                    // only if written
+      "diagnosis": "",                    // only if written; separate multiple with ", "
       "suggestions": "",                  // doctor's advice in simple words: diet, rest, follow-up, further tests
       "medicines": [ { "name": "", "dose": "", "frequency": "", "duration": "" } ],  // tablets / syrups / injections prescribed or billed; frequency like "1-0-1 after food"
       "billAmount": ""                    // total with currency if this is a bill, e.g. "₹1,250"

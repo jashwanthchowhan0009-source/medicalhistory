@@ -119,7 +119,8 @@
     if (error) throw error;
   }
 
-  function byDateDesc(a, b) { return (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''); }
+  const sortKey = (e) => `${e.date || (e.createdAt || '').slice(0, 10)} ${e.time || '00:00'} ${e.createdAt || ''}`;
+  function byDateDesc(a, b) { return sortKey(b).localeCompare(sortKey(a)); }
 
   async function loadEntries() {
     entries = [];
@@ -489,6 +490,13 @@
   }
   const toApiFile = async (f) => ({ name: f.name, mediaType: f.mediaType, data: (await fileAsDataURL(f)).split(',')[1] });
 
+  const VITAL_KEYS = ['bpSystolic', 'bpDiastolic', 'pulse', 'sugar', 'spo2', 'temperature', 'weight', 'height'];
+  function cleanVitals(v) {
+    const out = {};
+    if (v && typeof v === 'object') for (const k of VITAL_KEYS) { const x = String(v[k] ?? '').trim(); if (x) out[k] = x; }
+    return out;
+  }
+
   function entryFromAI(ai, files) {
     const idx = Array.isArray(ai.sourceIndexes) && ai.sourceIndexes.length ? ai.sourceIndexes : files.map((_, i) => i);
     const arr = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
@@ -501,6 +509,9 @@
       doctor: str(ai.doctor), hospital: str(ai.hospital), diagnosis: str(ai.diagnosis), suggestions: str(ai.suggestions),
       medicines: arr(ai.medicines),
       billAmount: str(ai.billAmount),
+      time: /^\d{1,2}:\d{2}$/.test(str(ai.time)) ? str(ai.time).padStart(5, '0') : '',
+      vitals: cleanVitals(ai.vitals),
+      symptoms: Array.isArray(ai.symptoms) ? ai.symptoms.map(str).filter(Boolean) : [],
       files: [...new Set(idx.map(Number))].map((i) => files[i]).filter(Boolean),
     };
   }
@@ -632,7 +643,7 @@
   function matches(e, q) {
     if (!q) return true;
     const hay = [e.title, e.madeBy, e.reportSays, e.doctor, e.hospital, e.diagnosis, e.suggestions, e.tldr, e.documentType,
-      ...(e.medicines || []).map((m) => m.name), ...(e.findings || []).map((f) => f.name)].join(' ').toLowerCase();
+      ...(e.medicines || []).map((m) => m.name), ...(e.findings || []).map((f) => f.name), ...(e.symptoms || [])].join(' ').toLowerCase();
     return hay.includes(q.toLowerCase());
   }
   function flagClass(flag) {
@@ -642,76 +653,178 @@
     return '';
   }
 
+  // ---------- Record cards ----------
+  const ICONS = {
+    lab: '<path d="M9 3h6"/><path d="M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7.5 15h9"/>',
+    rx: '<rect x="3" y="9" width="18" height="7" rx="3.5"/><path d="M12 9v7"/><path d="M7 5h10"/>',
+    doctor: '<path d="M6 3v6a6 6 0 0 0 12 0V3"/><path d="M12 15v2a4 4 0 0 0 8 0v-3"/><circle cx="20" cy="12" r="2"/>',
+    discharge: '<path d="M3 20V8"/><path d="M3 14h18v6"/><path d="M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="2"/>',
+    scan: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v8M8 12h8"/>',
+    bill: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+    vitals: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+    other: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  };
+  function kindOf(e) {
+    const t = String(e.documentType || '').toLowerCase();
+    if (t.includes('vital')) return 'vitals';
+    if (t.includes('lab')) return 'lab';
+    if (t.includes('prescription')) return 'rx';
+    if (t.includes('discharge')) return 'discharge';
+    if (t.includes('scan') || t.includes('x-ray') || t.includes('imaging')) return 'scan';
+    if (t.includes('bill')) return 'bill';
+    if (t.includes('doctor') || t.includes('consult') || t.includes('note')) return 'doctor';
+    return 'other';
+  }
+  const icon = (k, size = 18) => `<svg class="k-icon" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k] || ICONS.other}</svg>`;
+  const clip = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7L10.2 17a1.7 1.7 0 0 1-2.4-2.4L15.5 7"/></svg>';
+  const hospIcon = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M9 2h6v4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4zm2 2v2h2V4zm0 7v2.5H8.5v2H11V18h2v-2.5h2.5v-2H13V11z"/></svg>';
+  const fmtTime = (t) => {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  };
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function dayLabel(iso) {
+    if (!iso) return 'Date unknown';
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d)) return iso;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((today - d) / 864e5);
+    const base = `${DAYS[d.getDay()]}, ${fmtDate(iso)}`;
+    return diff === 0 ? `Today · ${fmtDate(iso)}` : diff === 1 ? `Yesterday · ${fmtDate(iso)}` : base;
+  }
+
+  function vitalsChips(v = {}) {
+    const chips = [];
+    if (v.bpSystolic || v.bpDiastolic) {
+      chips.push([v.bpSystolic || '—', 'Systolic'], [v.bpDiastolic || '—', 'Diastolic']);
+    }
+    if (v.pulse) chips.push([v.pulse, 'Pulse']);
+    if (v.sugar) chips.push([v.sugar, 'Sugar']);
+    if (v.spo2) chips.push([String(v.spo2).replace(/%?$/, '%'), 'SpO₂']);
+    if (v.temperature) chips.push([v.temperature, 'Temperature']);
+    if (v.weight) chips.push([/[a-z]/i.test(v.weight) ? v.weight : `${v.weight} kg`, 'Weight']);
+    if (v.height) chips.push([/[a-z]/i.test(v.height) ? v.height : `${v.height} cm`, 'Height']);
+    if (!chips.length) return '';
+    return `<div class="chips">${chips.map(([val, lab]) => `<div class="chip"><strong>${esc(val)}</strong><span>${esc(lab)}</span></div>`).join('')}</div>`;
+  }
+
+  function bpNote(v = {}) {
+    const sy = parseFloat(v.bpSystolic), di = parseFloat(v.bpDiastolic);
+    if (!sy || !di) return '';
+    if (sy >= 140 || di >= 90) return '<p class="c-note warn">Above the usual range (under 120/80). Show this to your doctor.</p>';
+    if (sy < 90 || di < 60) return '<p class="c-note warn">Below the usual range (90/60 – 120/80). Show this to your doctor.</p>';
+    return '';
+  }
+
+  function bulletList(items) {
+    const arr = (items || []).map((x) => String(x).trim()).filter(Boolean);
+    return arr.length ? `<ul class="bullets">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  }
+  const splitList = (s) => String(s || '').split(/\s*[,;]\s*|\n+/).filter(Boolean);
+
+  function testsTable(findings) {
+    const groups = [];
+    for (const f of findings) {
+      const sec = String(f.section || '').trim();
+      let g = groups.find((x) => x.sec.toLowerCase() === sec.toLowerCase());
+      if (!g) groups.push(g = { sec, rows: [] });
+      g.rows.push(f);
+    }
+    return `
+      <div class="inv">
+        <div class="inv-head"><span>Investigation</span><span>Result</span><span>Reference</span></div>
+        ${groups.map((g) => `
+          ${g.sec ? `<div class="inv-sec">${esc(g.sec)}</div>` : ''}
+          ${g.rows.map((f) => {
+            const fc = flagClass(f.flag);
+            return `<div class="inv-row ${fc}">
+              <span class="inv-name">${esc(f.name)}</span>
+              <span class="inv-val">${esc(f.value)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ''}${fc ? ` <b class="inv-flag">${fc === 'flag-high' ? 'High' : 'Low'}</b>` : ''}</span>
+              <span class="inv-ref">${esc(f.range || '—')}</span>
+            </div>`;
+          }).join('')}`).join('')}
+      </div>`;
+  }
+
+  function kebab(e) {
+    return `
+      <details class="kebab">
+        <summary aria-label="More actions"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></summary>
+        <div class="kebab-menu" role="menu">
+          ${(e.files || []).length ? `<button type="button" role="menuitem" data-sources="${e.id}">View original files</button>` : ''}
+          ${!e.scanned && (e.files || []).length ? `<button type="button" role="menuitem" data-retry="${e.id}">Retry scan</button>` : ''}
+          <button type="button" role="menuitem" class="danger" data-delete="${e.id}">Delete record</button>
+        </div>
+      </details>`;
+  }
+
   function cardHTML(e) {
+    const k = kindOf(e);
     const nFiles = (e.files || []).length;
+    const findings = (e.findings || []).filter((f) => f && f.name);
+    const abnormal = findings.filter((f) => flagClass(f.flag));
+    const meds = (e.medicines || []).filter((m) => m && m.name);
+    const v = e.vitals || {};
+    const who = [e.doctor, e.hospital || e.madeBy].filter(Boolean);
+    // the day heading and time rail already show when; the card only adds the document type and files
+    const meta = (e.documentType || nFiles) ? `
+      <div class="c-meta-row">
+        <span>${esc(e.documentType || '')}</span>
+        ${nFiles ? `<button class="attach" type="button" data-sources="${e.id}">${clip}${nFiles} Attachment${nFiles > 1 ? 's' : ''}</button>` : ''}
+      </div>` : '';
+
     if (!e.scanned) {
       return `
-      <article class="t-card unscanned">
-        <header class="c-head"><h3 class="c-name">${esc(e.title)}</h3></header>
-        <p class="c-text muted">${esc(e.error ? 'Last attempt: ' + e.error : 'These files are stored but haven’t been read by the AI.')}</p>
-        <div class="card-actions">
-          <button class="btn btn-primary btn-sm" type="button" data-retry="${e.id}">Retry scan</button>
-          <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">Sources (${nFiles})</button>
-          <button class="link-btn danger" type="button" data-delete="${e.id}">Delete</button>
-        </div>
+      <article class="t-card k-other unscanned">
+        <header class="c-top">${icon('other')}<h3 class="c-name">${esc(e.title)}</h3>${kebab(e)}</header>
+        ${meta}
+        <p class="c-text muted">${esc(e.error ? 'Last attempt: ' + e.error : 'Saved, not read by the AI yet.')}</p>
+        <button class="btn btn-primary btn-sm" type="button" data-retry="${e.id}">Retry scan</button>
       </article>`;
     }
-    const findings = (e.findings || []).filter((f) => f && f.name);
-    const meds = (e.medicines || []).filter((m) => m && m.name);
-    const hasDoctor = e.doctor || e.hospital || e.suggestions || meds.length || e.diagnosis;
-    // abnormal values first; keep the card short by folding extra normal ones
-    const sorted = [...findings.filter((f) => flagClass(f.flag)), ...findings.filter((f) => !flagClass(f.flag))];
-    const SHOW = 5;
-    const hiddenCount = Math.max(0, sorted.length - SHOW);
-    const pillIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="8" width="18" height="8" rx="4"/><path d="M12 8v8"/></svg>';
+
+    // one-line preview while collapsed
+    const preview = abnormal.length
+      ? `<p class="c-flags">${abnormal.slice(0, 3).map((f) => `<span class="${flagClass(f.flag)}">${esc(f.name)} ${flagClass(f.flag) === 'flag-high' ? '↑' : '↓'}</span>`).join('')}${abnormal.length > 3 ? `<span class="more">+${abnormal.length - 3}</span>` : ''}</p>`
+      : findings.length ? `<p class="c-flags"><span class="ok">All ${findings.length} results in normal range</span></p>`
+      : e.diagnosis ? `<p class="c-line">${esc(e.diagnosis)}</p>`
+      : e.reportSays ? `<p class="c-line">${esc(e.reportSays)}</p>` : '';
+
+    const hasMore = k !== 'vitals' && (e.reportSays || findings.length || e.symptoms?.length || e.diagnosis || e.suggestions || meds.length || e.billAmount);
+
     return `
-      <article class="t-card">
-        <header class="c-head">
-          <h3 class="c-name">${esc(e.title)}</h3>
-          ${e.documentType ? `<span class="tag">${esc(e.documentType)}</span>` : ''}
-          ${e.madeBy ? `<p class="c-meta">Made by ${esc(e.madeBy)}</p>` : ''}
-        </header>
-        <div class="tldr-wrap">
-          <button class="tldr-btn" type="button" data-tldr="${e.id}" aria-expanded="false" aria-controls="tldr-${e.id}">
-            <span class="tldr-k">TL;DR</span><span class="tldr-hint">Explain this report simply</span>
-          </button>
-          <p class="tldr" id="tldr-${e.id}" hidden></p>
-        </div>
-        ${(e.reportSays || findings.length) ? `
-        <section class="c-sec">
-          <h4 class="c-label">What the report says</h4>
+      <article class="t-card k-${k}">
+        <header class="c-top">${icon(k)}<h3 class="c-name">${esc(e.title)}</h3>${kebab(e)}</header>
+        ${meta}
+        ${who.length ? `<p class="c-who">${hospIcon}<span>${esc(who.join(' · '))}</span></p>` : ''}
+        ${vitalsChips(v)}
+        ${bpNote(v)}
+        ${preview}
+        ${hasMore ? `
+        <div class="c-details">
           ${e.reportSays ? `<p class="c-text">${esc(e.reportSays)}</p>` : ''}
-          ${sorted.length ? `
-          <ul class="tests">${sorted.map((f, i) => {
-            const fc = flagClass(f.flag);
-            return `
-            <li class="test${fc ? ' ' + fc : ''}${i >= SHOW ? ' extra' : ''}">
-              <span class="test-name">${esc(f.name)}${f.range ? `<small>Normal ${esc(f.range)}</small>` : ''}</span>
-              <span class="test-val">${esc(f.value)}${f.unit ? ` <small>${esc(f.unit)}</small>` : ''}${fc ? `<b class="flag-badge">${fc === 'flag-high' ? 'High' : 'Low'}</b>` : ''}</span>
-            </li>`;
-          }).join('')}
-          </ul>
-          ${hiddenCount ? `<button class="link-btn more-btn" type="button" data-more><span class="when-closed">Show ${hiddenCount} more normal result${hiddenCount > 1 ? 's' : ''}</span><span class="when-open">Show less</span></button>` : ''}` : ''}
-        </section>` : ''}
-        ${hasDoctor ? `
-        <section class="c-sec">
-          <h4 class="c-label">Consulted doctor</h4>
-          ${(e.doctor || e.hospital) ? `<p class="c-doc"><strong>${esc(e.doctor || 'Doctor')}</strong>${e.hospital ? `<span>${esc(e.hospital)}</span>` : ''}</p>` : ''}
-          ${e.diagnosis ? `<p class="c-text"><strong>Diagnosis:</strong> ${esc(e.diagnosis)}</p>` : ''}
-          ${e.suggestions ? `<p class="c-text"><strong>Advice:</strong> ${esc(e.suggestions)}</p>` : ''}
-          ${meds.length ? `
+          ${findings.length ? testsTable(findings) : ''}
+          ${e.symptoms?.length ? `<h4 class="c-h">Symptoms</h4>${bulletList(e.symptoms)}` : ''}
+          ${e.diagnosis ? `<h4 class="c-h">Diagnosis</h4>${bulletList(splitList(e.diagnosis))}` : ''}
+          ${e.suggestions ? `<h4 class="c-h">Doctor’s advice</h4><p class="c-text">${esc(e.suggestions)}</p>` : ''}
+          ${meds.length ? `<h4 class="c-h">Medicines</h4>
           <ul class="meds">${meds.map((m) => `
-            <li><span class="pill">${pillIcon}</span><div><strong>${esc(m.name)}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
+            <li><span class="pill">${icon('rx', 14)}</span><div><strong>${esc(m.name)}</strong>${[m.dose, m.frequency, m.duration].some(Boolean) ? `<span>${esc([m.dose, m.frequency, m.duration].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`).join('')}
           </ul>` : ''}
-        </section>` : ''}
-        ${e.billAmount ? `<p class="c-bill">Bill amount <strong>${esc(e.billAmount)}</strong></p>` : ''}
-        <div class="card-actions">
-          <button class="btn btn-outline btn-sm" type="button" data-sources="${e.id}">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
-            Sources (${nFiles})
-          </button>
-          <button class="link-btn danger" type="button" data-delete="${e.id}">Delete</button>
+          ${e.billAmount ? `<p class="c-bill">Bill amount <strong>${esc(e.billAmount)}</strong></p>` : ''}
+          ${k !== 'vitals' ? `
+          <div class="tldr-wrap">
+            <button class="tldr-btn" type="button" data-tldr="${e.id}" aria-expanded="false" aria-controls="tldr-${e.id}">
+              <span class="tldr-k">TL;DR</span><span class="tldr-hint">Explain this report simply</span>
+            </button>
+            <p class="tldr" id="tldr-${e.id}" hidden></p>
+          </div>` : ''}
         </div>
+        <button class="c-toggle" type="button" data-expand aria-expanded="false">
+          <span class="when-closed">View details</span><span class="when-open">Hide details</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>` : ''}
       </article>`;
   }
 
@@ -724,12 +837,68 @@
       $('#timeline').innerHTML = `<li class="muted">No records match “${esc(q)}”.</li>`;
       return;
     }
-    $('#timeline').innerHTML = list.map((e) => `
-      <li class="t-item" id="rec-${e.id}">
-        <span class="t-dot" aria-hidden="true"></span>
-        <div class="t-date">${esc(fmtDate(e.date))}${e.hospital ? `<small>${esc(e.hospital)}</small>` : ''}</div>
-        ${cardHTML(e)}
+    // group by day
+    const days = [];
+    for (const e of list) {
+      const d = e.date || (e.createdAt || '').slice(0, 10);
+      let g = days[days.length - 1];
+      if (!g || g.d !== d) days.push(g = { d, items: [] });
+      g.items.push(e);
+    }
+    $('#timeline').innerHTML = days.map((g) => `
+      <li class="day">
+        <h2 class="day-label">${esc(dayLabel(g.d))}</h2>
+        <ol class="day-items">
+          ${g.items.map((e) => `
+          <li class="t-item k-${e.scanned ? kindOf(e) : 'other'}" id="rec-${e.id}">
+            <span class="t-time">${e.time ? esc(fmtTime(e.time)) : ''}</span>
+            <span class="t-dot" aria-hidden="true"></span>
+            ${cardHTML(e)}
+          </li>`).join('')}
+        </ol>
       </li>`).join('');
+  }
+
+  // ---------- Manual BP / vitals ----------
+  function openVitals() {
+    const dlg = $('#vitalsDialog');
+    const f = $('#vitalsForm');
+    f.reset();
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    f.elements.date.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    f.elements.time.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    $('#vitalsFor').textContent = `For ${pname(active())}`;
+    setStatus($('#vitalsStatus'), '');
+    dlg.showModal ? dlg.showModal() : dlg.setAttribute('open', '');
+  }
+  async function saveVitals(ev) {
+    ev.preventDefault();
+    const f = ev.target;
+    const status = $('#vitalsStatus');
+    const v = {};
+    for (const k of VITAL_KEYS) if (f.elements[k] && f.elements[k].value.trim()) v[k] = f.elements[k].value.trim();
+    if (v.temperature) v.temperature += ' °F';
+    if (!Object.keys(v).length) return setStatus(status, 'Enter at least one reading.', 'error');
+    if (!!v.bpSystolic !== !!v.bpDiastolic) return setStatus(status, 'Enter both systolic and diastolic for BP.', 'error');
+    const date = f.elements.date.value;
+    if (!isoDate(date)) return setStatus(status, 'Pick a date.', 'error');
+    const btn = $('#vitalsSave');
+    btn.disabled = true;
+    try {
+      const note = f.elements.note.value.trim();
+      const e = {
+        id: uid(), createdAt: new Date().toISOString(), scanned: true, manual: true,
+        date, time: f.elements.time.value || '', documentType: 'Vitals',
+        title: v.bpSystolic ? 'Blood pressure' : 'Vitals check', vitals: v,
+        reportSays: note, files: [],
+      };
+      await putEntry(e, activeId);
+      await loadEntries();
+      $('#vitalsDialog').close();
+      renderHistory();
+    } catch (err) { setStatus(status, esc(err.message), 'error'); }
+    finally { btn.disabled = false; }
   }
 
   // TL;DR is made only when asked, then saved on the record so it is never generated twice.
@@ -948,8 +1117,13 @@
     $('#timeline').addEventListener('click', async (e) => {
       const t = e.target.closest('[data-tldr]');
       if (t) return toggleTldr(t);
-      const m = e.target.closest('[data-more]');
-      if (m) return m.closest('.t-card').classList.toggle('show-all');
+      const x = e.target.closest('[data-expand]');
+      if (x) {
+        const open = x.closest('.t-card').classList.toggle('open');
+        x.setAttribute('aria-expanded', String(open));
+        return;
+      }
+      if (e.target.closest('.kebab-menu button')) e.target.closest('details')?.removeAttribute('open');
       const s = e.target.closest('[data-sources]');
       if (s) return openSources(s.dataset.sources);
       const r = e.target.closest('[data-retry]');
@@ -959,6 +1133,12 @@
         try { await delEntry(d.dataset.delete); await loadEntries(); renderHistory(); }
         catch (err) { alert('Delete failed: ' + err.message); }
       }
+    });
+    $('#addVitalsBtn').addEventListener('click', openVitals);
+    $('#vitalsForm').addEventListener('submit', saveVitals);
+    $('#vitalsDialog').addEventListener('click', (e) => { if (e.target.id === 'vitalsDialog' || e.target.closest('[data-close]')) $('#vitalsDialog').close(); });
+    document.addEventListener('click', (e) => {
+      $$('details.kebab[open]').forEach((d) => { if (!d.contains(e.target)) d.removeAttribute('open'); });
     });
     const dlg = $('#sourcesDialog');
     dlg.addEventListener('click', (e) => { if (e.target === dlg || e.target.closest('[data-close]')) dlg.close(); });
