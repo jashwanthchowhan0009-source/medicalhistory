@@ -10,6 +10,8 @@ const SYSTEM = `You read photos and PDFs of personal health documents (lab repor
 
 The user may upload several documents in ANY order, possibly from different visits. Group pages that belong to the same visit/report together, and create one record per visit/report. Read every word, including handwriting, as carefully as you can. Never invent values: if something is not written, leave it as an empty string or empty list.
 
+Files named like "Scan A – page 1 (front)" / "(back)" are the front and back of the same paper, photographed with the app's scanner: always keep all pages with the same scan letter in ONE record and read both sides.
+
 ACCURACY RULES — people will rely on this for their health, mistakes can hurt them:
 - Dates: first copy the date text exactly into "dateText", then convert it. Look closely at similar digits (6/8, 1/7, 3/8, 0/6, 5/6) — zoom into the printed year. Prefer "Sample collected" / "Visit" date over printed-on or report dates. These are Indian documents, written DAY/MONTH/YEAR (e.g. 07/04/26 = 7 April 2026). Never swap day and month. Never guess a missing or unreadable year — leave "date" as "" instead. Today is {{TODAY}}; a report cannot be from the future, so if what you read is after today, you misread it: leave "" and add "date" to needsReview.
 - Medicines: copy the drug name, strength (mg/ml), dose and frequency EXACTLY as written. Never "correct" or guess a dose, strength or frequency. If any part of a medicine is hard to read (handwriting), still write your best reading but set "unclear": true on that medicine.

@@ -470,6 +470,7 @@
     $('#pendingList').innerHTML = pending.map((p) => `
       <li class="thumb">
         ${p.mediaType === 'application/pdf' ? `<div class="pdf">PDF<small>${esc(p.name)}</small></div>` : `<img src="${p.dataUrl}" alt="${esc(p.name)}">`}
+        ${p.side ? `<span class="side-badge">${p.side === 'back' ? 'Back' : 'Front'} · p${p.page}</span>` : ''}
         <button class="remove" type="button" data-remove="${p.id}" aria-label="Remove ${esc(p.name)}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
         </button>
@@ -540,7 +541,10 @@
     let cur = [], size = 0;
     payload.forEach((p, i) => {
       const b = p.data.length;
-      if (cur.length && (size + b > MAX_BATCH_BYTES || cur.length >= MAX_BATCH_FILES)) { batches.push(cur); cur = []; size = 0; }
+      const sameDoc = cur.length && files[i].docId && cur[cur.length - 1].file.docId === files[i].docId;
+      const full = size + b > MAX_BATCH_BYTES || cur.length >= MAX_BATCH_FILES;
+      // keep front & back of one scanned paper in the same request (hard cap 4 MB for Vercel's limit)
+      if (cur.length && full && !(sameDoc && size + b <= 4.0e6 && cur.length < 6)) { batches.push(cur); cur = []; size = 0; }
       cur.push({ file: files[i], api: p }); size += b;
     });
     if (cur.length) batches.push(cur);
@@ -761,7 +765,8 @@
       <details class="kebab">
         <summary aria-label="More actions"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></summary>
         <div class="kebab-menu" role="menu">
-          ${(e.files || []).length ? `<button type="button" role="menuitem" data-sources="${e.id}">View original files</button>` : ''}
+          ${(e.files || []).length ? `<button type="button" role="menuitem" data-sources="${e.id}">View original files</button>
+          <button type="button" role="menuitem" data-pdf="${e.id}">Download PDF</button>` : ''}
           ${!e.scanned && (e.files || []).length ? `<button type="button" role="menuitem" data-retry="${e.id}">Retry scan</button>` : ''}
           <button type="button" role="menuitem" data-setdate="${e.id}">Change date</button>
           <button type="button" role="menuitem" class="danger" data-delete="${e.id}">Delete record</button>
@@ -904,6 +909,50 @@
     }).join('');
   }
 
+  // ---------- Document scanner ----------
+  function openScanner() {
+    if (!window.MHScanner) return alert('Scanner did not load. Please refresh the page.');
+    window.MHScanner.open({
+      onDone(pages, docId) {
+        const room = MAX_FILES - pending.length;
+        if (pages.length > room) alert(`Only ${room} more file${room === 1 ? '' : 's'} fit in one scan. Extra pages were left out.`);
+        for (const pg of pages.slice(0, Math.max(0, room))) {
+          pending.push({ id: uid(), name: pg.name, mediaType: 'image/jpeg', dataUrl: pg.dataUrl, docId, side: pg.side, page: pg.page });
+        }
+        renderPending();
+        $('#pending').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
+    });
+  }
+
+  // ---------- PDF of a record (for doctors) ----------
+  async function downloadPdf(id, btn) {
+    const e = entries.find((x) => x.id === id);
+    if (!e) return;
+    const imgs = (e.files || []).filter((f) => f.mediaType !== 'application/pdf');
+    const pdfs = (e.files || []).filter((f) => f.mediaType === 'application/pdf');
+    const label = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = spin('Making PDF…'); }
+    try {
+      if (!imgs.length && pdfs.length) { // already a PDF — open it
+        const { data } = await sb.storage.from(BUCKET).createSignedUrl(pdfs[0].path, 600);
+        if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
+        return;
+      }
+      if (!imgs.length) throw new Error('This record has no pages to export.');
+      const pages = [];
+      for (const f of imgs) pages.push({ dataUrl: await fileAsDataURL(f), name: f.name });
+      const who = pname(active()).replace(/[^\w ]+/g, '').trim().replace(/\s+/g, '-');
+      const title = `${e.title || 'Report'} — ${pname(active())}${e.date ? ' — ' + fmtDate(e.date) : ''}`;
+      const pdf = await window.MHPdf.build(pages, title);
+      pdf.save(`${who}_${(e.title || 'report').replace(/[^\w ]+/g, '').trim().replace(/\s+/g, '-')}_${e.date || 'undated'}.pdf`);
+    } catch (err) {
+      alert('Could not make the PDF: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = label; }
+    }
+  }
+
   // ---------- Fix a record's date ----------
   async function saveDate(id, d) {
     const e = entries.find((x) => x.id === id);
@@ -1021,7 +1070,8 @@
       const { data } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
       (data || []).forEach((d) => { if (d.signedUrl) urls[d.path] = d.signedUrl; });
     }
-    $('#sourcesBody').innerHTML = files.map((f, i) => {
+    const pdfBtn = files.length ? `<button type="button" class="btn btn-primary btn-sm src-pdf" data-pdf="${e.id}">Download as PDF</button>` : '';
+    $('#sourcesBody').innerHTML = pdfBtn + files.map((f, i) => {
       const src = urls[f.path] || f.dataUrl;
       if (!src) return `<p class="muted">${i + 1}. ${esc(f.name)} — couldn’t load.</p>`;
       if (f.mediaType === 'application/pdf') {
@@ -1193,6 +1243,8 @@
     $('#timeline').addEventListener('click', async (e) => {
       const t = e.target.closest('[data-tldr]');
       if (t) return toggleTldr(t);
+      const pd = e.target.closest('[data-pdf]');
+      if (pd) { pd.closest('details')?.removeAttribute('open'); return downloadPdf(pd.dataset.pdf); }
       const fx = e.target.closest('[data-fixdate]');
       if (fx) return saveDate(fx.dataset.fixdate, fx.dataset.to);
       const ok = e.target.closest('[data-okdate]');
@@ -1219,6 +1271,8 @@
       }
     });
     $('#addVitalsBtn').addEventListener('click', openVitals);
+    $('#scanDocBtn').addEventListener('click', openScanner);
+    $('#sourcesBody').addEventListener('click', (ev) => { const b = ev.target.closest('[data-pdf]'); if (b) downloadPdf(b.dataset.pdf, b); });
     $('#vitalsForm').addEventListener('submit', saveVitals);
     $('#vitalsDialog').addEventListener('click', (e) => { if (e.target.id === 'vitalsDialog' || e.target.closest('[data-close]')) $('#vitalsDialog').close(); });
     document.addEventListener('click', (e) => {

@@ -158,7 +158,11 @@
           <h2 class="dz-title">Upload Report</h2>
           <p class="dz-hint desktop-only">Drag &amp; drop files here, or choose an option</p>
           <div class="dz-actions">
-            <label class="btn btn-primary" for="cameraInput">
+            <button class="btn btn-primary" type="button" id="scanDocBtn">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
+              Scan document
+            </button>
+            <label class="btn btn-outline" for="cameraInput">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
               Take photo
             </label>
@@ -169,7 +173,7 @@
           </div>
           <input class="sr-only" type="file" id="cameraInput" accept="image/*" capture="environment">
           <input class="sr-only" type="file" id="galleryInput" accept="image/*,application/pdf" multiple>
-          <p class="dz-formats">JPG, PNG or PDF · up to 10 files at a time</p>
+          <p class="dz-formats"><strong>Scan document</strong> straightens the page, cleans it and asks for the back side · JPG, PNG or PDF · up to 10 files</p>
         </div>
 
         <div class="pending" id="pending" hidden>
@@ -303,6 +307,88 @@
     </a>
   </nav>
 
+  <dialog id="scanDialog" class="dialog scan-dialog" aria-labelledby="scanCaptureTitle">
+    <div class="dialog-head">
+      <div><h2 class="h3" id="scanCaptureTitle">Scan a document</h2><p class="muted scan-count" id="scanCount"></p></div>
+      <button class="icon-btn" type="button" data-scan-close aria-label="Close scanner">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dialog-body scan-body">
+      <div class="scan-busy" id="scanBusy" hidden><span class="spinner"></span> Working…</div>
+
+      <section data-step="capture">
+        <p class="scan-side" id="scanSide">Page 1 · Front side</p>
+        <p class="muted">Lay the paper flat on a darker surface, in good light. Keep all four corners in the photo.</p>
+        <div class="scan-actions">
+          <label class="btn btn-primary btn-block" for="scanCam">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+            Take photo
+          </label>
+          <label class="btn btn-outline btn-block" for="scanPick">Choose from gallery</label>
+        </div>
+        <input class="sr-only" type="file" id="scanCam" accept="image/*" capture="environment">
+        <input class="sr-only" type="file" id="scanPick" accept="image/*">
+      </section>
+
+      <section data-step="adjust" hidden>
+        <p class="muted">Drag the 4 green corners to the edges of the page.</p>
+        <div class="scan-stage" id="scanStage">
+          <div class="scan-wrap">
+            <canvas id="scanCanvas"></canvas>
+            <svg id="scanOverlay" class="scan-overlay" aria-hidden="true"><path id="scanShade" fill-rule="evenodd"/><polygon id="scanPoly"/></svg>
+            <button type="button" class="scan-h" aria-label="Top-left corner"></button>
+            <button type="button" class="scan-h" aria-label="Top-right corner"></button>
+            <button type="button" class="scan-h" aria-label="Bottom-right corner"></button>
+            <button type="button" class="scan-h" aria-label="Bottom-left corner"></button>
+          </div>
+        </div>
+        <div class="scan-tools">
+          <button type="button" class="btn btn-outline btn-sm" id="scanRotate">⟳ Rotate</button>
+          <button type="button" class="btn btn-outline btn-sm" id="scanAuto">Auto edges</button>
+          <button type="button" class="btn btn-outline btn-sm" id="scanFull">Whole photo</button>
+        </div>
+        <div class="scan-actions row">
+          <button type="button" class="btn btn-outline" id="scanRetake">Retake</button>
+          <button type="button" class="btn btn-primary" id="scanNext">Straighten page</button>
+        </div>
+      </section>
+
+      <section data-step="result" hidden>
+        <div class="scan-modes" role="group" aria-label="Look">
+          <button type="button" class="mode" data-mode="clean" aria-pressed="true">Clean</button>
+          <button type="button" class="mode" data-mode="bw" aria-pressed="false">B&amp;W</button>
+          <button type="button" class="mode" data-mode="original" aria-pressed="false">Original</button>
+        </div>
+        <p class="muted scan-hint" id="scanModeHint"></p>
+        <div class="scan-result"><canvas id="scanResult"></canvas></div>
+        <p class="hint">Only cropped, straightened and brightened — nothing in the document is added or removed.</p>
+        <div class="scan-actions row">
+          <button type="button" class="btn btn-outline" id="scanBackAdjust">Adjust corners</button>
+          <button type="button" class="btn btn-primary" id="scanKeep">Keep page</button>
+        </div>
+      </section>
+
+      <section data-step="back" hidden>
+        <h3 class="scan-q">Is anything printed or written on the back side?</h3>
+        <p class="muted">Doctors often write on the back of prescriptions and reports.</p>
+        <div class="scan-actions">
+          <button type="button" class="btn btn-primary btn-block" id="scanAddBack">Yes, scan back side</button>
+          <button type="button" class="btn btn-outline btn-block" id="scanNoBack">No, it’s blank</button>
+        </div>
+      </section>
+
+      <section data-step="more" hidden>
+        <h3 class="scan-q">Page saved ✓</h3>
+        <p class="muted">Add another page of the same report, or finish.</p>
+        <div class="scan-actions">
+          <button type="button" class="btn btn-outline btn-block" id="scanAddPage">+ Add next page</button>
+          <button type="button" class="btn btn-primary btn-block" id="scanDone">Done</button>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
   <dialog id="vitalsDialog" class="dialog dialog-sm" aria-labelledby="vitalsTitle">
     <form id="vitalsForm" method="dialog" novalidate>
       <div class="dialog-head">
@@ -343,7 +429,9 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
   <script src="config.js"></script>
+  <script src="scanner.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
