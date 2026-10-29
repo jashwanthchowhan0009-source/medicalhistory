@@ -42,6 +42,19 @@
           "value": "no-cache"
         }
       ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
     }
   ],
   "git": {
@@ -53,6 +66,18 @@
     {
       "source": "/e/:token",
       "destination": "/e.html"
+    },
+    {
+      "source": "/download",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/app",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/get",
+      "destination": "/download.html"
     }
   ]
 }

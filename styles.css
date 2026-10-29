@@ -828,3 +828,9 @@ button.rv-item { cursor: pointer; }
 .share-box strong { white-space: nowrap; word-break: normal; font-size: clamp(18px, 6vw, 24px); }
 .share-box .otp { font-size: clamp(30px, 10vw, 40px); }
 .pid-code { white-space: nowrap; font-size: clamp(15px, 4.4vw, 17px); }
+
+/* ===== v9: Get the app ===== */
+.get-app { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; padding: 12px; border: 1.5px dashed var(--green-line); border-radius: var(--radius); background: var(--green-tint); color: var(--green); font-weight: 600; font-size: 14px; text-decoration: none; }
+.get-app:hover { border-color: var(--green); }
+.footer-links { margin-top: 6px; font-size: 13px; }
+.is-app [data-getapp], .is-app .footer-links { display: none !important; }

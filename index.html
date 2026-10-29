@@ -80,6 +80,10 @@
             <button class="link-btn" type="button" id="forgotBtn">Forgot password?</button>
             <p class="status" id="authStatus" role="status" aria-live="polite"></p>
           </form>
+          <a class="get-app" href="/download" data-getapp>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7m-3-3 3 3 3-3M10 18h4"/></svg>
+            Get the app on your phone
+          </a>
         </div>
       </div>
     </section>
@@ -296,6 +300,7 @@
           <h2 class="h3" id="dataTitle">Account &amp; data</h2>
           <p class="muted">Records are saved privately to your account — only you can see them. Files are sent to the AI only while scanning.</p>
           <div class="row-actions">
+            <a class="btn btn-outline" href="/download" data-getapp>Get the app</a>
             <button class="btn btn-outline" type="button" id="exportBtn">Export backup</button>
             <button class="btn btn-outline" type="button" id="logoutBtn">Log out</button>
           </div>
@@ -311,6 +316,7 @@
   <footer class="footer">
     <img class="footer-mark" src="assets/logo-mark-green.png" alt="" width="28" height="28">
     <p>Medical History helps you organise records. It is not medical advice — always talk to your doctor.</p>
+    <p class="footer-links"><a href="/download" data-getapp>Download the app</a></p>
   </footer>
 
   <nav class="nav-mobile" aria-label="Main">
@@ -461,5 +467,10 @@
   <script src="scanner.js"></script>
   <script src="features.js"></script>
   <script src="app.js"></script>
+  <script>
+    // Installable + offline app shell. Inside the installed app, hide the "Get the app" links.
+    if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) document.documentElement.classList.add('is-app');
+  </script>
 </body>
 </html>

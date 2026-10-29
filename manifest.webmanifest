@@ -1,13 +1,33 @@
 {
+  "id": "/",
   "name": "Medical History",
-  "short_name": "Medical History",
-  "description": "Your family's medical reports, prescriptions and bills in one place.",
-  "start_url": "/#home",
+  "short_name": "MedH",
+  "description": "Your family's medical reports, prescriptions, bills and daily tablets in one place.",
+  "start_url": "/?source=app#home",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
   "background_color": "#FAFAF7",
   "theme_color": "#00930A",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["medical", "health", "lifestyle"],
   "icons": [
-    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ]
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/assets/shot-phone-1.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "All your family's reports in one timeline" },
+    { "src": "/assets/shot-phone-2.png", "sizes": "1080x1920", "type": "image/png", "form_factor": "narrow", "label": "Daily tablets with M · A · E · N reminders" },
+    { "src": "/assets/shot-wide-1.png", "sizes": "1920x1080", "type": "image/png", "form_factor": "wide", "label": "Medical History on a laptop" }
+  ],
+  "shortcuts": [
+    { "name": "Upload a report", "short_name": "Upload", "url": "/?source=shortcut#home", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "History", "short_name": "History", "url": "/?source=shortcut#history", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Daily tablets", "short_name": "Tablets", "url": "/?source=shortcut#profile", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "prefer_related_applications": false
 }

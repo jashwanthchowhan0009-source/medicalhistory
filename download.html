@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#00930A">
+  <meta name="color-scheme" content="light dark">
+  <title>Download Medical History</title>
+  <meta name="description" content="Install Medical History on your phone or laptop in one tap. Free. Keep your whole family's reports, prescriptions and daily tablets in one place.">
+  <meta property="og:title" content="Medical History — get the app">
+  <meta property="og:description" content="Your family's reports, prescriptions and daily tablets in one place. Free, installs in one tap.">
+  <meta property="og:image" content="https://mymedicalhistory.vercel.app/assets/icon-512.png">
+  <meta property="og:url" content="https://mymedicalhistory.vercel.app/download">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="MedH">
+  <script>try { var t = localStorage.getItem('mh-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { min-height: 100vh; }
+    .dl { max-width: 560px; margin: 0 auto; padding: 28px 16px 40px; }
+    .dl-hero { text-align: center; }
+    .dl-icon { width: 104px; height: 104px; border-radius: 24px; margin: 0 auto 16px; box-shadow: 0 10px 30px rgba(0, 147, 10, .25); display: block; }
+    .dl-hero h1 { font-size: clamp(26px, 7vw, 34px); margin: 0 0 6px; }
+    .dl-hero .lead { margin: 0 auto; max-width: 30em; color: var(--muted); }
+    .dl-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 16px 0 0; padding: 0; list-style: none; }
+    .dl-facts li { font-size: 12.5px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: var(--green-tint); color: var(--green); border: 1px solid var(--green-line); }
+
+    .dl-card { margin-top: 22px; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+    .dl-card h2 { font-size: 18px; margin: 0 0 4px; }
+    .dl-card > .muted { margin: 0 0 14px; }
+    .dl-big { width: 100%; min-height: 56px; font-size: 17px; border-radius: 14px; }
+    .dl-big svg { flex: none; }
+    .dl-steps { list-style: none; counter-reset: s; margin: 4px 0 0; padding: 0; display: grid; gap: 10px; }
+    .dl-steps li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; font-size: 15px; line-height: 1.45; }
+    .dl-steps li::before { content: counter(s); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: var(--on-green); font-weight: 700; font-size: 14px; }
+    .dl-steps b { font-weight: 700; }
+    .kbd { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg-soft); font-weight: 600; white-space: nowrap; vertical-align: 1px; }
+    .kbd svg { width: 15px; height: 15px; }
+    .dl-ok { text-align: center; }
+    .dl-ok .tick { width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: var(--on-green); }
+    .dl-alt { margin-top: 12px; text-align: center; font-size: 14px; }
+    .dl-alt button { background: none; border: 0; color: var(--green); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 4px; }
+
+    .dl-share { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: center; }
+    .dl-qr { justify-self: center; width: 172px; height: 172px; padding: 10px; background: #fff; border-radius: 14px; border: 1px solid var(--line); }
+    .dl-qr svg, .dl-qr img { width: 100%; height: 100%; display: block; }
+    .dl-link { display: flex; gap: 8px; }
+    .dl-link input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--ink); font: 500 14px var(--sans); }
+    .dl-share-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .dl-share-btns .btn { flex: 1; min-width: 130px; }
+    @media (min-width: 560px) { .dl-share { grid-template-columns: 172px 1fr; gap: 20px; } }
+
+    .dl-faq details { border-top: 1px solid var(--line); padding: 12px 0; }
+    .dl-faq details:first-of-type { border-top: 0; padding-top: 0; }
+    .dl-faq summary { cursor: pointer; font-weight: 600; font-size: 15px; list-style: none; display: flex; justify-content: space-between; gap: 10px; }
+    .dl-faq summary::-webkit-details-marker { display: none; }
+    .dl-faq summary::after { content: '+'; color: var(--green); font-weight: 700; }
+    .dl-faq details[open] summary::after { content: '–'; }
+    .dl-faq p { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .dl-foot { text-align: center; margin-top: 26px; }
+    .dl-foot a { font-weight: 600; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="dl">
+    <section class="dl-hero">
+      <img class="dl-icon" src="/assets/icon-512.png" alt="Medical History app icon" width="104" height="104">
+      <h1>Medical History</h1>
+      <p class="lead">Every report, prescription and daily tablet for your whole family — in one app.</p>
+      <ul class="dl-facts">
+        <li>Free</li><li>Under 1 MB</li><li>Updates itself</li><li>Android · iPhone · Laptop</li>
+      </ul>
+    </section>
+
+    <!-- The right card is shown by the script below, based on the device. -->
+    <section class="dl-card" id="cardInstall" hidden>
+      <h2 id="installTitle">Install the app</h2>
+      <p class="muted" id="installSub">One tap. It goes on your home screen like any other app.</p>
+      <button class="btn btn-primary dl-big" type="button" id="installBtn">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 21h14"/></svg>
+        Install app
+      </button>
+      <p class="dl-alt"><button type="button" data-show="manual">Button not working? Do it by hand</button></p>
+    </section>
+
+    <section class="dl-card" id="cardAndroid" hidden>
+      <h2>Install on Android</h2>
+      <p class="muted">Takes 10 seconds in Chrome.</p>
+      <ol class="dl-steps">
+        <li><span>Tap the <span class="kbd"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg> menu</span> at the top-right of Chrome.</span></li>
+        <li><span>Tap <b>Install app</b> (or <b>Add to Home screen</b>).</span></li>
+        <li><span>Tap <b>Install</b>. Open <b>MedH</b> from your home screen.</span></li>
+      </ol>
+      <p class="hint" id="samsungHint" hidden>Samsung Internet: tap <b>☰ menu → Add page to → Home screen</b>.</p>
+    </section>
+
+    <section class="dl-card" id="cardIOS" hidden>
+      <h2>Install on iPhone</h2>
+      <p class="muted" id="iosSub">Apple lets you add it from Safari in 3 taps.</p>
+      <ol class="dl-steps">
+        <li><span>Tap the <span class="kbd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg> Share</span> button <span id="iosWhere">at the bottom of Safari</span>.</span></li>
+        <li><span>Scroll down and tap <b>Add to Home Screen</b> <span class="kbd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg></span>.</span></li>
+        <li><span>Tap <b>Add</b>. Open <b>MedH</b> from your home screen.</span></li>
+      </ol>
+    </section>
+
+    <section class="dl-card" id="cardInApp" hidden>
+      <h2>Open in your browser first</h2>
+      <p class="muted" id="inAppSub">Apps like Instagram and Facebook open links in their own mini-browser, which can’t install apps.</p>
+      <a class="btn btn-primary dl-big" id="openChrome" href="#" hidden>Open in Chrome</a>
+      <ol class="dl-steps" id="inAppIOS" hidden>
+        <li><span>Tap <span class="kbd">•••</span> (top-right or bottom of this screen).</span></li>
+        <li><span>Tap <b>Open in Safari</b> (or <b>Open in external browser</b>).</span></li>
+        <li><span>Then follow the steps shown there.</span></li>
+      </ol>
+      <button class="btn btn-outline btn-block" type="button" id="copyInApp" style="margin-top:12px">Copy link</button>
+    </section>
+
+    <section class="dl-card" id="cardDesktop" hidden>
+      <h2>On a laptop</h2>
+      <p class="muted">In Chrome or Edge, click the <span class="kbd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 8v6m-3-3 3 3 3-3M8 21h8"/></svg> install</span> icon at the right end of the address bar. Or just use the website — it’s the same app.</p>
+      <a class="btn btn-outline btn-block" href="/">Open in browser</a>
+    </section>
+
+    <section class="dl-card dl-ok" id="cardDone" hidden>
+      <div class="tick"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></div>
+      <h2 id="doneTitle">Installed</h2>
+      <p class="muted" id="doneSub">Open <b>MedH</b> from your home screen or app list.</p>
+      <a class="btn btn-primary btn-block" href="/?source=download#home">Open Medical History</a>
+    </section>
+
+    <section class="dl-card" aria-labelledby="shareTitle">
+      <h2 id="shareTitle">Share with family</h2>
+      <p class="muted" id="shareSub">Send this link, or let them scan the code with their phone camera.</p>
+      <div class="dl-share">
+        <div class="dl-qr" id="qr" role="img" aria-label="QR code for mymedicalhistory.vercel.app/download"></div>
+        <div>
+          <div class="dl-link">
+            <input id="link" type="text" readonly aria-label="Download link">
+            <button class="btn btn-outline" type="button" id="copyBtn">Copy</button>
+          </div>
+          <div class="dl-share-btns" style="margin-top:10px">
+            <a class="btn btn-primary" id="waBtn" target="_blank" rel="noopener">WhatsApp</a>
+            <button class="btn btn-outline" type="button" id="shareBtn" hidden>More…</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="dl-card dl-faq" aria-label="Questions">
+      <details><summary>Is it safe? Why not the Play Store?</summary><p>It installs straight from our own website (a “web app”), so there is no APK file to download and no “unknown sources” warning. It can only do what a website can — it asks before using the camera or sending reminders.</p></details>
+      <details><summary>Is my data stored on the phone?</summary><p>Your records are saved privately in your account, not inside the app. Log in on any phone or laptop and everything is there. Losing the phone doesn’t lose your history.</p></details>
+      <details><summary>How do I update it?</summary><p>You don’t need to. Every time you open it with internet, it loads the newest version.</p></details>
+      <details><summary>Does it work without internet?</summary><p>The app opens without internet, but reading reports with AI and loading your records needs a connection.</p></details>
+      <details><summary>How do I remove it?</summary><p>Long-press the MedH icon and choose <b>Uninstall</b> or <b>Remove</b>, like any app. Your account and records stay safe.</p></details>
+    </section>
+
+    <p class="dl-foot muted"><a href="/">Open the website</a> · Not medical advice — always talk to your doctor.</p>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    const URL_DL = 'https://mymedicalhistory.vercel.app/download';
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/i.test(ua);
+    const isMobile = isIOS || isAndroid;
+    const inApp = /FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|Twitter|LinkedInApp|GSA\/|; wv\)/i.test(ua);
+    const isSamsung = /SamsungBrowser/i.test(ua);
+    const iosNotSafari = isIOS && /CriOS|FxiOS|EdgiOS/i.test(ua);
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+    const cards = ['cardInstall', 'cardAndroid', 'cardIOS', 'cardInApp', 'cardDesktop', 'cardDone'];
+    const show = (...ids) => cards.forEach((c) => { $(c).hidden = !ids.includes(c); });
+
+    // ---- pick what to show ----
+    let deferred = null;
+    function fallbackCard() {
+      if (isIOS) {
+        if (iosNotSafari) { $('iosWhere').textContent = 'in the address bar (top-right)'; $('iosSub').textContent = 'Works in Safari and Chrome on iPhone (iOS 16.4+).'; }
+        return show('cardIOS');
+      }
+      if (isAndroid) { $('samsungHint').hidden = !isSamsung; return show('cardAndroid'); }
+      return show('cardDesktop');
+    }
+    if (standalone) {
+      $('doneTitle').textContent = 'You’re in the app';
+      $('doneSub').textContent = 'Medical History is already installed on this device.';
+      show('cardDone');
+    } else if (inApp) {
+      if (isAndroid) {
+        const a = $('openChrome');
+        a.href = 'intent://' + URL_DL.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+        a.hidden = false;
+        $('inAppSub').textContent = 'This app opened the link in its own mini-browser, which can’t install apps. Open it in Chrome:';
+      } else {
+        $('inAppIOS').hidden = false;
+      }
+      show('cardInApp');
+    } else {
+      fallbackCard();
+      // Chrome / Edge / Samsung on Android & desktop fire this when one-tap install is possible
+      addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferred = e;
+        if (!isMobile) { $('installTitle').textContent = 'Install on this computer'; $('installSub').textContent = 'Opens in its own window, with an icon in your apps.'; }
+        show('cardInstall');
+      });
+    }
+
+    $('installBtn').addEventListener('click', async () => {
+      if (!deferred) return fallbackCard();
+      deferred.prompt();
+      const { outcome } = await deferred.userChoice.catch(() => ({ outcome: 'dismissed' }));
+      deferred = null;
+      if (outcome !== 'accepted') fallbackCard();
+    });
+    document.addEventListener('click', (e) => { if (e.target.closest('[data-show="manual"]')) fallbackCard(); });
+    addEventListener('appinstalled', () => show('cardDone'));
+
+    // ---- share ----
+    $('link').value = URL_DL.replace(/^https:\/\//, '');
+    const msg = 'Keep all our family’s medical reports, prescriptions and daily tablets in one app — Medical History. Free: ' + URL_DL;
+    $('waBtn').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
+    async function copy(btn) {
+      try { await navigator.clipboard.writeText(URL_DL); } catch { $('link').select(); document.execCommand('copy'); }
+      const t = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = t; }, 1600);
+    }
+    $('copyBtn').addEventListener('click', (e) => copy(e.currentTarget));
+    $('copyInApp').addEventListener('click', (e) => copy(e.currentTarget));
+    if (navigator.share) {
+      $('shareBtn').hidden = false;
+      $('shareBtn').addEventListener('click', () => navigator.share({ title: 'Medical History', text: msg.replace(URL_DL, '').trim(), url: URL_DL }).catch(() => {}));
+    }
+    if (isMobile) $('shareSub').textContent = 'Send this link on WhatsApp, or let someone scan the code from your screen.';
+
+    // ---- QR (drawn on the device, no tracking service) ----
+    try {
+      const q = qrcode(0, 'M'); q.addData(URL_DL); q.make();
+      $('qr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
+    } catch { $('qr').hidden = true; }
+
+    if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  })();
+  </script>
+</body>
+</html>
