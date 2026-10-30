@@ -49,7 +49,7 @@ create policy "own meds" on public.hh_meds for all to authenticated
 -- ───────────────────── admins & doctors ─────────────────────
 create table if not exists public.hh_admins (email text primary key);
 alter table public.hh_admins enable row level security;          -- no policies: only definer functions read it
-insert into public.hh_admins (email) values ('jashwanthchowhan0009@gmail.com') on conflict do nothing;
+insert into public.hh_admins (email) values ('jashwanthchowhan0009@gmail.com'), ('jashwanthchowhan0004@gmail.com') on conflict do nothing;
 
 create or replace function public.hh_is_admin()
 returns boolean language sql stable security definer set search_path = '' as $$

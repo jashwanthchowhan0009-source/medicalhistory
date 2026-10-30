@@ -831,7 +831,7 @@
             ${f.length ? R.testsTable(f) : ''}
             ${e.diagnosis ? `<h5 class="c-h">Diagnosis</h5>${R.bulletList(R.splitList(e.diagnosis))}` : ''}
             ${(e.medicines || []).length ? `<h5 class="c-h">Medicines</h5>${R.bulletList(e.medicines.map((m) => [m.name, m.dose, m.frequency, m.duration].filter(Boolean).join(' · ')))}` : ''}
-            ${(e.files || []).filter((x) => x.path).length ? `<button type="button" class="link-btn" data-docfiles='${esc(JSON.stringify(e.files.filter((x) => x.path).map((x) => ({ p: x.path, n: x.name, t: x.mediaType }))))}'>View original files</button>` : ''}
+            ${(e.files || []).filter((x) => x.path).length ? `<button type="button" class="link-btn" data-docfiles='${esc(JSON.stringify(e.files.filter((x) => x.path).map((x) => ({ p: x.path, n: x.name, t: x.mediaType, d: x.docId || '', s: x.storeOnly ? 1 : 0 }))))}'>View original files</button>` : ''}
           </details>
         </li>`;
       }).join('')}</ol>
@@ -840,13 +840,12 @@
   }
 
   async function showDocFiles(files) {
-    const body = dialog('Original files', `<p class="muted">${spin('Loading…')}</p>`);
-    const { data } = await A().sb.storage.from(A().BUCKET).createSignedUrls(files.map((f) => f.p), 1800);
-    body.innerHTML = files.map((f, i) => {
-      const u = data?.[i]?.signedUrl;
-      if (!u) return `<p class="muted">${esc(f.n)} — not available</p>`;
-      return f.t === 'application/pdf' ? `<p><a href="${esc(u)}" target="_blank" rel="noopener">Open ${esc(f.n)}</a></p>` : `<a href="${esc(u)}" target="_blank" rel="noopener"><img class="med-photo" src="${esc(u)}" alt="${esc(f.n)}"></a>`;
-    }).join('');
+    const pageDocs = new Set(files.filter((f) => f.t !== 'application/pdf' && f.d).map((f) => f.d));
+    const show = files.filter((f) => !(f.s && f.d && pageDocs.has(f.d)));
+    const { data } = await A().sb.storage.from(A().BUCKET).createSignedUrls(show.map((f) => f.p), 1800);
+    const items = show.map((f, i) => ({ url: data?.[i]?.signedUrl, kind: f.t === 'application/pdf' ? 'pdf' : 'img', name: f.n }));
+    if (!items.some((x) => x.url)) return alert('Files are not available.');
+    window.MHViewer.open(items, 0, { title: 'Original files' });
   }
 
   // QR scanning (doctor emergency)
@@ -1092,7 +1091,7 @@
     const bun = t.closest('[data-bundle]'); if (bun) return openBundle(bun.dataset.bundle);
     const df = t.closest('[data-docfiles]'); if (df) return showDocFiles(JSON.parse(df.dataset.docfiles));
     const vid = t.closest('[data-viewid]');
-    if (vid) { const u = await signed(vid.dataset.viewid, 600, 'hh-doctor-ids'); if (u) window.open(u, '_blank', 'noopener'); else alert('Could not open the ID.'); return; }
+    if (vid) { const u = await signed(vid.dataset.viewid, 600, 'hh-doctor-ids'); if (u) window.MHViewer.open([{ url: u, kind: /\.pdf$/i.test(vid.dataset.viewid) ? 'pdf' : 'img', name: 'Doctor ID proof' }]); else alert('Could not open the ID.'); return; }
     const ap = t.closest('[data-approve]'), rj = t.closest('[data-reject]');
     if (ap || rj) {
       const note = rj ? prompt('Reason (shown to the doctor):', 'Registration number could not be verified') : '';

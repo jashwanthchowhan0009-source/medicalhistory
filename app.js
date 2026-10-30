@@ -1169,29 +1169,26 @@
     } finally { btn.disabled = false; }
   }
 
-  async function openSources(id) {
+  // Attachments open straight in the in-app viewer (no download needed to look at a report)
+  async function openSources(id, start = 0) {
     const e = entries.find((x) => x.id === id);
     if (!e) return;
-    const dlg = $('#sourcesDialog');
-    $('#sourcesTitle').textContent = `Sources · ${e.title}`;
-    $('#sourcesBody').innerHTML = `<p class="muted">${spin('Loading files…')}</p>`;
-    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
-    const files = e.files || [];
-    const paths = files.map((f) => f.path).filter(Boolean);
+    const all = e.files || [];
+    // a PDF is stored twice: its page images (shown — instant) and the untouched original (offered as download)
+    const pageDocs = new Set(all.filter((f) => f.mediaType !== 'application/pdf' && f.docId).map((f) => f.docId));
+    const show = all.filter((f) => !(f.storeOnly && f.docId && pageDocs.has(f.docId)));
+    const paths = show.map((f) => f.path).filter(Boolean);
     const urls = {};
     if (paths.length) {
       const { data } = await sb.storage.from(BUCKET).createSignedUrls(paths, 3600);
       (data || []).forEach((d) => { if (d.signedUrl) urls[d.path] = d.signedUrl; });
     }
-    const pdfBtn = files.length ? `<button type="button" class="btn btn-primary btn-sm src-pdf" data-pdf="${e.id}">Download as PDF</button>` : '';
-    $('#sourcesBody').innerHTML = pdfBtn + files.map((f, i) => {
-      const src = urls[f.path] || f.dataUrl;
-      if (!src) return `<p class="muted">${i + 1}. ${esc(f.name)} — couldn’t load.</p>`;
-      if (f.mediaType === 'application/pdf') {
-        return `<figure class="source"><iframe src="${esc(src)}" title="${esc(f.name)}"></iframe><figcaption>${i + 1}. ${esc(f.name)} · <a href="${esc(src)}" target="_blank" rel="noopener">Open</a></figcaption></figure>`;
-      }
-      return `<figure class="source"><a href="${esc(src)}" target="_blank" rel="noopener"><img src="${esc(src)}" alt="Page ${i + 1}: ${esc(f.name)}"></a><figcaption>${i + 1}. ${esc(f.name)}</figcaption></figure>`;
-    }).join('') || '<p class="muted">No files attached.</p>';
+    const items = show.map((f, i) => ({
+      url: urls[f.path] || f.dataUrl, kind: f.mediaType === 'application/pdf' ? 'pdf' : 'img',
+      name: show.length > 1 ? `${e.title || 'Report'} · ${i + 1}` : (e.title || f.name),
+    }));
+    if (!items.some((x) => x.url)) return alert('Could not load the files. Check your internet and try again.');
+    window.MHViewer.open(items, start, { title: e.title, onDownload: () => downloadPdf(e.id) });
   }
 
   // ---------- Profile ----------
