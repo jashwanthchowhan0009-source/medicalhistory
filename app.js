@@ -237,7 +237,7 @@
       window.scrollTo(0, 0);
       return;
     }
-    // A patient (with Aadhaar) is required before anything else.
+    // A patient profile is required before anything else (Aadhaar is optional).
     if (!patients.length) {
       document.body.classList.add('onboarding');
       openPatientForm(null, true);
@@ -285,7 +285,7 @@
     $('#authTitle').textContent = t[1];
     $('#authSubmit').textContent = t[2];
     $('#authSub').textContent = mode === 'signup'
-      ? 'One email for the whole family. Next you’ll add the first patient (Aadhaar required).'
+      ? 'One email for the whole family. Next you’ll add the first patient — takes 30 seconds.'
       : 'One account for your whole family’s reports — on any device.';
     const back = '<button type="button" class="link-btn" id="backToLogin">← Back to log in</button>';
     setStatus($('#authStatus'), mode === 'reset' ? `We’ll email you a link to set a new password. ${back}`
@@ -410,13 +410,13 @@
     $('#pt-aadhaar').placeholder = p ? maskAadhaar(p.aadhaar_last4) + ' — leave blank to keep' : '1234 5678 9012';
     $('#pt-aadhaar').removeAttribute('aria-invalid');
     $('#aadhaarHint').className = 'hint';
-    $('#aadhaarHint').textContent = '12 digits. For your privacy only the last 4 digits are stored.';
+    $('#aadhaarHint').textContent = 'Optional. If you add it, only the last 4 digits are stored.';
     $('#pt-consent').checked = !!p;
     $('#pEyebrow').textContent = onboarding ? 'Step 2 of 2' : p ? 'Edit patient' : 'New patient';
     $('#pTitle').textContent = onboarding ? 'Add the first patient' : p ? pname(p) : 'Add a patient';
     $('#pLead').textContent = onboarding
-      ? 'Usually that’s you. You can add up to 5 more family members later. Aadhaar is required to create a Medical History account.'
-      : `One account can hold up to ${MAX_PATIENTS} patients. Aadhaar is required for every patient.`;
+      ? 'Usually that’s you. You can add up to 5 more family members later.'
+      : `One account can hold up to ${MAX_PATIENTS} patients.`;
     $('#patientCancel').hidden = onboarding;
     $('#doctorSkip').hidden = !onboarding;
     $('#onbExit').hidden = !onboarding;
@@ -437,13 +437,13 @@
     if (!data.name) return setStatus(status, 'Enter the full name.', 'error');
     if (!data.dob) return setStatus(status, 'Enter the date of birth.', 'error');
     if (!data.sex) return setStatus(status, 'Select sex.', 'error');
-    if (isNew || aadhaarRaw) {
+    if (aadhaarRaw) {                                   // optional — only checked when entered
       if (!validAadhaar(aadhaarRaw)) {
         $('#pt-aadhaar').setAttribute('aria-invalid', 'true');
         $('#aadhaarHint').className = 'hint error';
         $('#aadhaarHint').textContent = 'That isn’t a valid Aadhaar number. Check the 12 digits on the card.';
         $('#pt-aadhaar').focus();
-        return setStatus(status, 'Aadhaar number is required.', 'error');
+        return setStatus(status, 'Check the Aadhaar number, or leave it empty — it’s optional.', 'error');
       }
     }
     if (data.abha && data.abha.replace(/\D/g, '').length !== 14) return setStatus(status, 'ABHA number should be 14 digits.', 'error');
@@ -459,7 +459,10 @@
       location.hash = isNew && patients.length === 1 ? '#home' : '#profile';
       route();
     } catch (err) {
-      setStatus(status, esc(/up to 6/.test(err.message) ? `One account can hold up to ${MAX_PATIENTS} patients.` : err.message), 'error');
+      const m = err.message || '';
+      setStatus(status, esc(/up to 6/.test(m) ? `One account can hold up to ${MAX_PATIENTS} patients.`
+        : /aadhaar_last4/.test(m) && /null/i.test(m) ? 'Saving without Aadhaar needs a one-time update — run supabase/004_optional_aadhaar.sql in Supabase, or add the Aadhaar number for now.'
+        : m), 'error');
     } finally {
       btn.disabled = false;
     }
@@ -1380,7 +1383,7 @@
       e.target.value = fmtAadhaarInput(e.target.value);
       e.target.removeAttribute('aria-invalid');
       $('#aadhaarHint').className = 'hint';
-      $('#aadhaarHint').textContent = '12 digits. For your privacy only the last 4 digits are stored.';
+      $('#aadhaarHint').textContent = 'Optional. If you add it, only the last 4 digits are stored.';
     });
     $('#patientList').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-switch]');

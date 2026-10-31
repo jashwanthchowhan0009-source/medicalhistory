@@ -95,7 +95,7 @@
         <h1 id="pTitle">Add a patient</h1>
         <p class="doctor-skip" id="doctorSkip" hidden>Are you a doctor? <a href="#doctor">Open doctor tools</a></p>
         <p class="onb-exit" id="onbExit" hidden>Signed in as <strong id="onbEmail"></strong> · <button type="button" class="link-btn" data-logout>Not you? Log out</button></p>
-        <p class="lead" id="pLead">Add up to 6 family members to one account. Aadhaar is required for every patient.</p>
+        <p class="lead" id="pLead">Add up to 6 family members to one account.</p>
 
         <form id="patientForm" class="panel form-grid" novalidate>
           <div class="field span-2"><label for="pt-name">Full name <span class="req">*</span></label><input id="pt-name" name="name" type="text" autocomplete="name" required></div>
@@ -107,9 +107,9 @@
           <div class="field"><label for="pt-dob">Date of birth <span class="req">*</span></label><input id="pt-dob" name="dob" type="date" required></div>
 
           <div class="field span-2">
-            <label for="pt-aadhaar">Aadhaar number <span class="req">*</span></label>
+            <label for="pt-aadhaar">Aadhaar number <span class="opt">(optional)</span></label>
             <input id="pt-aadhaar" name="aadhaar" type="text" inputmode="numeric" autocomplete="off" placeholder="1234 5678 9012" maxlength="14">
-            <p class="hint" id="aadhaarHint">12 digits. For your privacy only the last 4 digits are stored.</p>
+            <p class="hint" id="aadhaarHint">Optional. If you add it, only the last 4 digits are stored.</p>
             <button type="button" class="btn btn-outline btn-sm aad-scan" id="aadhaarScanBtn">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
               Scan Aadhaar to fill

@@ -876,3 +876,4 @@ html.mv-open, html.mv-open body { overflow: hidden; }
 .onb-exit strong { color: var(--ink); font-weight: 600; word-break: break-all; }
 #authLoadErr { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
 #authLoadErr .btn { flex: 1; }
+.opt { color: var(--muted); font-weight: 500; font-size: .9em; }

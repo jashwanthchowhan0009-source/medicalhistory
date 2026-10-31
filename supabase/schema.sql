@@ -7,7 +7,7 @@ create table if not exists public.hh_patients (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
   data          jsonb not null default '{}'::jsonb,   -- name, relation, dob, sex, blood, health card, allergies …
-  aadhaar_last4 text not null check (aadhaar_last4 ~ '^[0-9]{4}$'),  -- only last 4 digits are stored
+  aadhaar_last4 text check (aadhaar_last4 ~ '^[0-9]{4}$'),  -- optional; only the last 4 digits are ever stored
   full_report   jsonb,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()

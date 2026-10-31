@@ -47,6 +47,9 @@ create policy "own meds" on public.hh_meds for all to authenticated
     and exists (select 1 from public.hh_patients p where p.id = patient_id and p.user_id = (select auth.uid())));
 
 -- ───────────────────── admins & doctors ─────────────────────
+-- Aadhaar is optional (also in 004_optional_aadhaar.sql)
+alter table public.hh_patients alter column aadhaar_last4 drop not null;
+
 create table if not exists public.hh_admins (email text primary key);
 alter table public.hh_admins enable row level security;          -- no policies: only definer functions read it
 insert into public.hh_admins (email) values ('jashwanthchowhan0009@gmail.com'), ('jashwanthchowhan0004@gmail.com') on conflict do nothing;

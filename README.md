@@ -10,7 +10,7 @@ Green, white & black, classic and minimal, light + dark mode, works on mobile an
 | Page | What it does |
 |---|---|
 | **Login** | Email + password: log in, create account, forgot / reset password. |
-| **Add patient** | Required after sign-up. Name, relation, DOB, sex, **Aadhaar (mandatory, checksum-validated — only last 4 digits stored)**, blood group, mobile, emergency contact, health card (ABHA, PM-JAY, Aarogyasri, CGHS, ESIC, insurance), height/weight, allergies, conditions. |
+| **Add patient** | Required after sign-up. Name, relation, DOB, sex, **Aadhaar (optional, checksum-validated — only last 4 digits stored)**, blood group, mobile, emergency contact, health card (ABHA, PM-JAY, Aarogyasri, CGHS, ESIC, insurance), height/weight, allergies, conditions. |
 | **Home** | Upload for the selected patient — *Take photo* or *Gallery / Files* (images & PDFs, drag-and-drop on desktop). |
 | **History** | Patient’s timeline: **Health Report \| Made by**, what it says in simple words (tests table, High/Low flagged), **Consulted doctor \| Hospital**, advice and tablets, **TL;DR**, **Sources** (original photos). Search. |
 | **Profile** | Account email, all patients (switch / edit / add), patient details, AI **complete health report** (print / PDF), export backup, log out. |
