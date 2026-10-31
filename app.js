@@ -1360,6 +1360,12 @@
       setAuthMode('login');
     });
     document.addEventListener('click', (e) => { if (e.target.closest('[data-logout]')) { e.preventDefault(); doSignOut(); } });
+    // During "Add the first patient" the avatar has nowhere to go — offer to log out instead
+    $('.avatar').addEventListener('click', (e) => {
+      if (!document.body.classList.contains('onboarding')) return;
+      e.preventDefault();
+      if (confirm(`Signed in as ${user?.email || ''}.\n\nLog out and go back to the login page?`)) doSignOut();
+    });
     $('#authForm').addEventListener('submit', onAuthSubmit);
     $('#logoutBtn').addEventListener('click', doSignOut);
 
