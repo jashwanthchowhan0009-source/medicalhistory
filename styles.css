@@ -870,3 +870,9 @@ html.mv-open, html.mv-open body { overflow: hidden; }
 .mv-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.35); }
 .mv-dots i.on { background: #3CC447; width: 18px; border-radius: 4px; }
 @media (hover: none) { .mv-nav { width: 40px; height: 52px; background: rgba(0,0,0,.3); } }
+
+/* ===== v12: never stuck before login ===== */
+.onb-exit { margin: 6px 0 14px; font-size: 14px; color: var(--muted); }
+.onb-exit strong { color: var(--ink); font-weight: 600; word-break: break-all; }
+#authLoadErr { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+#authLoadErr .btn { flex: 1; }

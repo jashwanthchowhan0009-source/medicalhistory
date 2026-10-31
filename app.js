@@ -80,6 +80,21 @@
     return data.session?.access_token || '';
   }
 
+  // Never leave someone stuck on a spinner: every auth/network step gives up after a while
+  function withTimeout(promise, ms = 20000, msg = 'The server is taking too long. Check your internet and try again.') {
+    let t; return Promise.race([promise, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(msg)), ms); })]).finally(() => clearTimeout(t));
+  }
+  // Log out from anywhere — even if the server can't be reached, clear the saved session on this device
+  async function doSignOut() {
+    try { await withTimeout(sb.auth.signOut(), 6000); } catch (err) {
+      try { await sb.auth.signOut({ scope: 'local' }); } catch {}
+      try { Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k)); } catch {}
+    }
+    recoveryMode = false;
+    if (location.hash) history.replaceState(null, '', location.pathname);
+    onSignedOut();
+  }
+
   // ---------- State ----------
   let patients = [];       // [{ id, data, aadhaar_last4, full_report }]
   let activeId = null;
@@ -258,6 +273,7 @@
     $('#passwordField').hidden = mode === 'reset';
     $('#au-email').closest('.field').hidden = mode === 'newpass';
     $('#forgotBtn').hidden = mode !== 'login';
+    $('#authForm').hidden = false;
     $('#au-password').setAttribute('autocomplete', mode === 'signup' || mode === 'newpass' ? 'new-password' : 'current-password');
     const t = {
       login: ['Welcome', 'Log in to Medical History', 'Log in'],
@@ -271,7 +287,9 @@
     $('#authSub').textContent = mode === 'signup'
       ? 'One email for the whole family. Next you’ll add the first patient (Aadhaar required).'
       : 'One account for your whole family’s reports — on any device.';
-    setStatus($('#authStatus'), mode === 'reset' ? 'We’ll email you a link to set a new password. <button type="button" class="link-btn" id="backToLogin">Back to log in</button>' : '');
+    const back = '<button type="button" class="link-btn" id="backToLogin">← Back to log in</button>';
+    setStatus($('#authStatus'), mode === 'reset' ? `We’ll email you a link to set a new password. ${back}`
+      : mode === 'newpass' ? `Changed your mind? ${back}` : '');
   }
 
   async function onAuthSubmit(ev) {
@@ -287,11 +305,11 @@
     try {
       if (authMode === 'login') {
         setStatus(status, spin('Logging in…'));
-        const { error } = await sb.auth.signInWithPassword({ email, password });
+        const { error } = await withTimeout(sb.auth.signInWithPassword({ email, password }));
         if (error) throw error;
       } else if (authMode === 'signup') {
         setStatus(status, spin('Creating account…'));
-        const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
+        const { data, error } = await withTimeout(sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } }));
         if (error) throw error;
         if (!data.session) {
           setAuthMode('login');
@@ -300,19 +318,21 @@
         }
       } else if (authMode === 'reset') {
         setStatus(status, spin('Sending…'));
-        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
+        const { error } = await withTimeout(sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin }));
         if (error) throw error;
         setStatus(status, `If an account exists for <strong>${esc(email)}</strong>, a reset link is on its way.`, 'ok');
       } else if (authMode === 'newpass') {
         setStatus(status, spin('Saving…'));
-        const { error } = await sb.auth.updateUser({ password });
+        const { error } = await withTimeout(sb.auth.updateUser({ password }));
         if (error) throw error;
         recoveryMode = false;
         history.replaceState(null, '', location.pathname + '#home');
         await onSignedIn((await sb.auth.getSession()).data.session);
       }
     } catch (err) {
-      const msg = /invalid login/i.test(err.message) ? 'Wrong email or password.' : err.message;
+      const msg = /invalid login/i.test(err.message) ? 'Wrong email or password.'
+        : /email not confirmed/i.test(err.message) ? 'Please confirm your email first — open the link we sent you, then log in.'
+        : /failed to fetch|network/i.test(err.message) ? 'No internet connection. Check it and try again.' : err.message;
       setStatus(status, esc(msg), 'error');
     } finally {
       btn.disabled = false;
@@ -325,15 +345,36 @@
     document.body.classList.remove('signed-out');
     $('#avatarInitial').textContent = (user.email || 'M')[0].toUpperCase();
     try {
-      await loadPatients();
-      await loadEntries();
-    } catch (err) { console.error(err); }
+      await withTimeout(loadPatients());
+    } catch (err) {
+      console.error(err);
+      return showLoadError(s);
+    }
+    try { await withTimeout(loadEntries()); } catch (err) { console.error(err); }
     paintPatientSwitch();
     if (!location.hash || /access_token|type=/.test(location.hash)) history.replaceState(null, '', location.pathname + '#home');
     route();
   }
 
+  // Couldn't load the account (offline / server down): offer Retry or Log out instead of a wrong screen
+  function showLoadError(s) {
+    document.body.classList.add('signed-out');
+    document.body.classList.remove('onboarding');
+    showView('auth');
+    $('#authForm').hidden = false;
+    $('.tabs').hidden = true;
+    $('#authEyebrow').textContent = 'Connection problem';
+    $('#authTitle').textContent = 'Couldn’t open your account';
+    $('#authSub').textContent = `Signed in as ${user?.email || ''}. Check your internet, then try again.`;
+    $('#authForm').hidden = true;
+    const box = $('#authLoadErr') || Object.assign(document.createElement('div'), { id: 'authLoadErr', className: 'row-actions' });
+    box.innerHTML = '<button type="button" class="btn btn-primary" id="retryLoad">Try again</button><button type="button" class="btn btn-outline" data-logout>Log out</button>';
+    $('#authForm').after(box); box.hidden = false;
+    $('#retryLoad').onclick = () => { box.hidden = true; $('.tabs').hidden = false; setAuthMode('login'); onSignedIn(s); };
+  }
+
   function onSignedOut() {
+    const box = $('#authLoadErr'); if (box) box.hidden = true;
     user = null; patients = []; entries = []; activeId = null;
     document.body.classList.add('signed-out');
     document.body.classList.remove('onboarding');
@@ -378,6 +419,8 @@
       : `One account can hold up to ${MAX_PATIENTS} patients. Aadhaar is required for every patient.`;
     $('#patientCancel').hidden = onboarding;
     $('#doctorSkip').hidden = !onboarding;
+    $('#onbExit').hidden = !onboarding;
+    $('#onbEmail').textContent = user?.email || '';
     $('#patientDelete').hidden = !p;
     setStatus($('#patientStatus'), '');
   }
@@ -1311,9 +1354,14 @@
     $('#tabLogin').addEventListener('click', () => setAuthMode('login'));
     $('#tabSignup').addEventListener('click', () => setAuthMode('signup'));
     $('#forgotBtn').addEventListener('click', () => setAuthMode('reset'));
-    $('#authStatus').addEventListener('click', (e) => { if (e.target.id === 'backToLogin') setAuthMode('login'); });
+    $('#authStatus').addEventListener('click', (e) => {
+      if (e.target.id !== 'backToLogin') return;
+      if (recoveryMode) return doSignOut();          // leaving the "new password" step
+      setAuthMode('login');
+    });
+    document.addEventListener('click', (e) => { if (e.target.closest('[data-logout]')) { e.preventDefault(); doSignOut(); } });
     $('#authForm').addEventListener('submit', onAuthSubmit);
-    $('#logoutBtn').addEventListener('click', () => sb.auth.signOut());
+    $('#logoutBtn').addEventListener('click', doSignOut);
 
     $('#patientSelect').addEventListener('change', async (e) => {
       if (e.target.value === '__add') { e.target.value = activeId; location.hash = '#patient/new'; return; }
@@ -1462,9 +1510,22 @@
       if (event === 'SIGNED_OUT') onSignedOut();
       if (event === 'SIGNED_IN' && s?.user?.id !== user?.id) onSignedIn(s);
     });
-    const { data } = await sb.auth.getSession();
+    // e.g. an expired confirmation / reset link lands here with an error in the URL
+    const hp = new URLSearchParams(location.hash.slice(1));
+    if (hp.get('error_description') || hp.get('error')) {
+      recoveryMode = false;
+      history.replaceState(null, '', location.pathname);
+      showView('auth'); setAuthMode('login');
+      setStatus($('#authStatus'), /expired|invalid/i.test(hp.get('error_description') || '')
+        ? 'That link has expired. Log in, or use “Forgot password?” to get a new one.'
+        : esc(hp.get('error_description') || 'That link didn’t work. Please log in.'), 'error');
+      return;
+    }
+    let session = null;
+    try { session = (await withTimeout(sb.auth.getSession(), 12000)).data.session; }
+    catch (err) { console.error(err); try { await sb.auth.signOut({ scope: 'local' }); } catch {} }
     if (recoveryMode) { showView('auth'); setAuthMode('newpass'); }
-    else if (data.session) await onSignedIn(data.session);
+    else if (session) await onSignedIn(session);
     else showView('auth');
   })();
 })();
