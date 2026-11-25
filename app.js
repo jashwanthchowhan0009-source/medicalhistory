@@ -332,7 +332,7 @@
     } catch (err) {
       const msg = /invalid login/i.test(err.message) ? 'Wrong email or password.'
         : /email not confirmed/i.test(err.message) ? 'Please confirm your email first — open the link we sent you, then log in.'
-        : /failed to fetch|network/i.test(err.message) ? 'No internet connection. Check it and try again.' : err.message;
+        : /failed to fetch|network|load failed/i.test(err.message) ? (navigator.onLine === false ? 'No internet connection. Check it and try again.' : 'Can’t reach the Medical History server right now. Please try again in a minute.') : err.message;
       setStatus(status, esc(msg), 'error');
     } finally {
       btn.disabled = false;
@@ -365,7 +365,7 @@
     $('.tabs').hidden = true;
     $('#authEyebrow').textContent = 'Connection problem';
     $('#authTitle').textContent = 'Couldn’t open your account';
-    $('#authSub').textContent = `Signed in as ${user?.email || ''}. Check your internet, then try again.`;
+    $('#authSub').textContent = `Signed in as ${user?.email || ''}. ${navigator.onLine === false ? 'Check your internet, then try again.' : 'The server didn’t answer — please try again in a minute.'}`;
     $('#authForm').hidden = true;
     const box = $('#authLoadErr') || Object.assign(document.createElement('div'), { id: 'authLoadErr', className: 'row-actions' });
     box.innerHTML = '<button type="button" class="btn btn-primary" id="retryLoad">Try again</button><button type="button" class="btn btn-outline" data-logout>Log out</button>';

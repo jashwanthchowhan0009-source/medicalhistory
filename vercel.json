@@ -79,5 +79,11 @@
       "source": "/get",
       "destination": "/download.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/keepalive",
+      "schedule": "30 3 * * *"
+    }
   ]
 }

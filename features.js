@@ -242,7 +242,7 @@
       // only happens before the one-time database setup, i.e. while the owner is setting up
       return 'This feature isn’t switched on yet. Setup: run supabase/002_family_doctor_emergency.sql once in the Supabase SQL Editor, then reload.';
     }
-    if (/failed to fetch|network|load failed/i.test(msg)) return 'No internet connection. Check it and try again.';
+    if (/failed to fetch|network|load failed/i.test(msg)) return (navigator.onLine === false ? 'No internet connection. Check it and try again.' : 'Can’t reach the Medical History server right now. Please try again in a minute.');
     if (/row-level security|permission denied|not allowed/i.test(msg)) return 'You don’t have permission for this.';
     return msg;
   }
